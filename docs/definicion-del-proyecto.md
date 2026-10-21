@@ -275,7 +275,7 @@ Un formulario temporal para que otras personas reporten problemas. Solo puede cr
 | RF-11 | Must | Ninguna · falta Ajustes / Exportar | ❌ Falta |
 | RF-12 | Should | Solo en el menú · falta la pantalla Bitácora | ❌ Falta |
 | RF-13 | Could | Snippets, Wiki (Guardar en Snippets) | ✅ Diseñado |
-| RF-14 | Could | Solo en el menú · falta la pantalla Aprendizaje | ❌ Falta |
+| RF-14 | Could | Aprendizaje (sin maqueta: lista con filtro por estado y formulario en línea) | ✅ Implementado |
 | RF-15 | Could | Portal de reportes, Bandeja, Tablero (Entrantes), Hoy | ✅ Diseñado |
 | RF-16 | Won’t | Portal (interruptor apagado) | ⏸ Fuera de v1 |
 | RF-17 | Could | Hoy (bloque Enfoque) | ✅ Diseñado |
