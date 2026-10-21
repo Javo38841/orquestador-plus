@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import {
+  isTaskStatus,
   validateProjectName,
   validateTaskInput,
   type Project,
@@ -19,10 +20,11 @@ interface TaskRow {
   project_name: string | null;
   for_today: number;
   created_at: string;
+  completed_at: string | null;
 }
 
 const SELECT_TASK = `
-  SELECT t.id, t.title, t.status, t.due_date, t.project_id, p.name AS project_name, t.for_today, t.created_at
+  SELECT t.id, t.title, t.status, t.due_date, t.project_id, p.name AS project_name, t.for_today, t.created_at, t.completed_at
   FROM tasks t LEFT JOIN projects p ON p.id = t.project_id`;
 
 function toTask(row: TaskRow, tags: string[] = []): Task {
@@ -36,6 +38,7 @@ function toTask(row: TaskRow, tags: string[] = []): Task {
     forToday: row.for_today === 1,
     tags,
     createdAt: row.created_at,
+    completedAt: row.completed_at,
   };
 }
 
@@ -156,11 +159,24 @@ export function updateTask(
   return { ok: true, task: getTask(db, id)! };
 }
 
-export function setTaskStatus(db: Database.Database, id: unknown, status: unknown): TaskResult {
-  if (status !== 'todo' && status !== 'done') return { ok: false, error: 'not_found' };
-  if (!isId(id) || !getTask(db, id)) return { ok: false, error: 'not_found' };
-  db.prepare('UPDATE tasks SET status = ? WHERE id = ?').run(status, id);
-  return { ok: true, task: getTask(db, id)! };
+/** Moves a task between columns. Entering "done" stamps `completed_at`; leaving it clears it. */
+export function setTaskStatus(
+  db: Database.Database,
+  id: unknown,
+  status: unknown,
+  now: Date = new Date(),
+): TaskResult {
+  if (!isTaskStatus(status)) return { ok: false, error: 'not_found' };
+  const current = isId(id) ? getTask(db, id) : null;
+  if (!current) return { ok: false, error: 'not_found' };
+  const completedAt =
+    status !== 'done' ? null : current.status === 'done' ? current.completedAt : now.toISOString();
+  db.prepare('UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?').run(
+    status,
+    completedAt,
+    id,
+  );
+  return { ok: true, task: getTask(db, id as number)! };
 }
 
 /** Marks or unmarks a task as "para hoy". */

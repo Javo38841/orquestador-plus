@@ -14,6 +14,7 @@ const task = (id: number, status: Task['status'] = 'todo', title = `t${id}`): Ta
   forToday: false,
   tags: [],
   createdAt: '2026-03-01T10:00:00.000Z',
+  completedAt: null,
 });
 
 function setup(stored: Task[]) {
@@ -44,6 +45,15 @@ function setup(stored: Task[]) {
 }
 
 describe('TasksStore', () => {
+  it('CP-04-03: move sends the new status and keeps the returned task', async () => {
+    const { store, api } = setup([task(1)]);
+    await store.load();
+    await store.move(store.tasks()[0], 'in_progress');
+    expect(api.setTaskStatus).toHaveBeenCalledWith(1, 'in_progress');
+    expect(store.tasks()[0].status).toBe('in_progress');
+    expect(store.visible().map((t) => t.id)).toEqual([1]);
+  });
+
   it('CP-02-04: completing a task removes it from the pending view and un-completing brings it back', async () => {
     const { store } = setup([task(1), task(2)]);
     await store.load();

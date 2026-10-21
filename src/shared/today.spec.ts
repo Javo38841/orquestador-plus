@@ -15,6 +15,7 @@ const task = (id: number, extra: Partial<Task> = {}): Task => ({
   forToday: false,
   tags: [],
   createdAt: '2026-03-01T10:00:00.000Z',
+  completedAt: null,
   ...extra,
 });
 
@@ -44,6 +45,11 @@ describe('todayGroups', () => {
       task(4),
     ];
     expect(todayGroups(list, NOW)).toEqual({ overdue: [], today: [] });
+  });
+
+  it('CP-04-03: a task in progress still shows in Hoy until it is done', () => {
+    const t = task(1, { status: 'in_progress', dueDate: '2026-10-19' });
+    expect(todayGroups([t], NOW).overdue).toEqual([t]);
   });
 
   it('CP-03-05: the day boundary is local midnight, not UTC', () => {

@@ -6,10 +6,10 @@ export interface TodayGroups {
   today: Task[];
 }
 
-/** Pending tasks only: overdue first, then due today or marked "para hoy". */
+/** Unfinished tasks only: overdue first, then due today or marked "para hoy". */
 export function todayGroups(tasks: Task[], now: Date = new Date()): TodayGroups {
   const today = localDate(now);
-  const pending = tasks.filter((t) => t.status === 'todo');
+  const pending = tasks.filter((t) => t.status !== 'done');
   return {
     overdue: pending.filter((t) => isOverdue(t, today)),
     today: pending.filter((t) => !isOverdue(t, today) && (t.dueDate === today || t.forToday)),

@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
 import { openDatabase } from '../db/database';
+import { migrate, migrations } from '../db/migrations';
 import {
   createProject,
   createTask,
@@ -192,5 +193,85 @@ describe('tasks', () => {
     const task = make('x');
     expect(setTaskForToday(db, 999, true)).toEqual({ ok: false, error: 'not_found' });
     expect(setTaskForToday(db, task.id, 'yes')).toEqual({ ok: false, error: 'not_found' });
+  });
+});
+
+describe('task board status', () => {
+  let dir: string;
+  let db: Database.Database;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orq-board-'));
+    db = openDatabase(dir);
+  });
+
+  afterEach(() => {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const make = (title: string) => {
+    const result = createTask(db, { title, dueDate: null, projectId: null });
+    if (!result.ok) throw new Error(result.error);
+    return result.task;
+  };
+
+  it('CP-04-02: the in-progress status is stored and survives reopening the database', () => {
+    const task = make('Mover');
+    const moved = setTaskStatus(db, task.id, 'in_progress');
+    expect(moved).toMatchObject({ ok: true, task: { status: 'in_progress', completedAt: null } });
+
+    db.close();
+    db = openDatabase(dir);
+    expect(listTasks(db)[0].status).toBe('in_progress');
+  });
+
+  it('CP-04-03: moving to done completes the task and moving out of done makes it pending again', () => {
+    const task = make('Cerrar');
+    const now = new Date('2026-03-20T12:00:00.000Z');
+    const done = setTaskStatus(db, task.id, 'done', now);
+    expect(done).toMatchObject({
+      ok: true,
+      task: { status: 'done', completedAt: '2026-03-20T12:00:00.000Z' },
+    });
+
+    // Done again keeps the original completion time.
+    const again = setTaskStatus(db, task.id, 'done', new Date('2026-03-25T00:00:00.000Z'));
+    expect(again).toMatchObject({ ok: true, task: { completedAt: '2026-03-20T12:00:00.000Z' } });
+
+    const back = setTaskStatus(db, task.id, 'todo');
+    expect(back).toMatchObject({ ok: true, task: { status: 'todo', completedAt: null } });
+  });
+
+  it('rejects an unknown status and an unknown task', () => {
+    const task = make('X');
+    expect(setTaskStatus(db, task.id, 'blocked')).toEqual({ ok: false, error: 'not_found' });
+    expect(setTaskStatus(db, 999, 'done')).toEqual({ ok: false, error: 'not_found' });
+  });
+
+  it('migration 6 keeps existing tasks, tags and completion when adding in_progress', () => {
+    const old = fs.mkdtempSync(path.join(os.tmpdir(), 'orq-mig-'));
+    const raw = new Database(path.join(old, 'datos.db'));
+    raw.pragma('foreign_keys = ON');
+    migrate(
+      raw,
+      migrations.filter((m) => m.version <= 5),
+    );
+    raw.exec(`
+      INSERT INTO tasks (title, status, created_at) VALUES ('a', 'todo', '2026-01-01T00:00:00.000Z');
+      INSERT INTO tasks (title, status, created_at) VALUES ('b', 'done', '2026-01-02T00:00:00.000Z');
+      INSERT INTO tags (name) VALUES ('infra');
+      INSERT INTO task_tags (task_id, tag_id) VALUES (1, 1), (2, 1);
+    `);
+    migrate(raw);
+    const rows = raw.prepare('SELECT title, status, completed_at FROM tasks ORDER BY id').all();
+    expect(rows).toEqual([
+      { title: 'a', status: 'todo', completed_at: null },
+      { title: 'b', status: 'done', completed_at: '2026-01-02T00:00:00.000Z' },
+    ]);
+    expect(raw.prepare('SELECT COUNT(*) AS n FROM task_tags').get()).toEqual({ n: 2 });
+    expect(() => raw.exec("UPDATE tasks SET status = 'in_progress' WHERE id = 1")).not.toThrow();
+    raw.close();
+    fs.rmSync(old, { recursive: true, force: true });
   });
 });
