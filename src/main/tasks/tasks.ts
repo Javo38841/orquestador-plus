@@ -17,11 +17,12 @@ interface TaskRow {
   due_date: string | null;
   project_id: number | null;
   project_name: string | null;
+  for_today: number;
   created_at: string;
 }
 
 const SELECT_TASK = `
-  SELECT t.id, t.title, t.status, t.due_date, t.project_id, p.name AS project_name, t.created_at
+  SELECT t.id, t.title, t.status, t.due_date, t.project_id, p.name AS project_name, t.for_today, t.created_at
   FROM tasks t LEFT JOIN projects p ON p.id = t.project_id`;
 
 function toTask(row: TaskRow): Task {
@@ -32,6 +33,7 @@ function toTask(row: TaskRow): Task {
     dueDate: row.due_date,
     projectId: row.project_id,
     projectName: row.project_name,
+    forToday: row.for_today === 1,
     createdAt: row.created_at,
   };
 }
@@ -122,6 +124,14 @@ export function setTaskStatus(db: Database.Database, id: unknown, status: unknow
   if (status !== 'todo' && status !== 'done') return { ok: false, error: 'not_found' };
   if (!isId(id) || !getTask(db, id)) return { ok: false, error: 'not_found' };
   db.prepare('UPDATE tasks SET status = ? WHERE id = ?').run(status, id);
+  return { ok: true, task: getTask(db, id)! };
+}
+
+/** Marks or unmarks a task as "para hoy". */
+export function setTaskForToday(db: Database.Database, id: unknown, forToday: unknown): TaskResult {
+  if (typeof forToday !== 'boolean') return { ok: false, error: 'not_found' };
+  if (!isId(id) || !getTask(db, id)) return { ok: false, error: 'not_found' };
+  db.prepare('UPDATE tasks SET for_today = ? WHERE id = ?').run(forToday ? 1 : 0, id);
   return { ok: true, task: getTask(db, id)! };
 }
 

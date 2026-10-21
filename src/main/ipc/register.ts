@@ -10,6 +10,7 @@ import {
   deleteTask,
   listProjects,
   listTasks,
+  setTaskForToday,
   setTaskStatus,
   updateTask,
 } from '../tasks/tasks';
@@ -45,6 +46,9 @@ export function registerIpcHandlers(db: Database.Database | null): void {
   );
   ipcMain.handle(IpcChannel.setTaskStatus, (_event, id: unknown, status: unknown) =>
     withDb((d) => setTaskStatus(d, id, status)),
+  );
+  ipcMain.handle(IpcChannel.setTaskForToday, (_event, id: unknown, forToday: unknown) =>
+    withDb((d) => setTaskForToday(d, id, forToday)),
   );
   ipcMain.handle(IpcChannel.deleteTask, (_event, id: unknown) => withDb((d) => deleteTask(d, id)));
   ipcMain.handle(IpcChannel.listProjects, () => withDb(listProjects));

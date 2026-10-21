@@ -14,6 +14,7 @@ export const IpcChannel = {
   createTask: 'tasks:create',
   updateTask: 'tasks:update',
   setTaskStatus: 'tasks:set-status',
+  setTaskForToday: 'tasks:set-for-today',
   deleteTask: 'tasks:delete',
   listProjects: 'projects:list',
   createProject: 'projects:create',
@@ -39,6 +40,7 @@ export interface OrquestadorApi {
   createTask(input: TaskInput): Promise<TaskResult>;
   updateTask(id: number, input: TaskInput): Promise<TaskResult>;
   setTaskStatus(id: number, status: TaskStatus): Promise<TaskResult>;
+  setTaskForToday(id: number, forToday: boolean): Promise<TaskResult>;
   deleteTask(id: number): Promise<boolean>;
   listProjects(): Promise<Project[]>;
   createProject(name: string): Promise<ProjectResult>;
