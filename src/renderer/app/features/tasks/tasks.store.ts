@@ -51,6 +51,14 @@ export class TasksStore {
     }
   }
 
+  async setForToday(task: Task, forToday: boolean): Promise<void> {
+    if (!this.api) return;
+    const result = await this.api.setTaskForToday(task.id, forToday);
+    if (result.ok) {
+      this.taskList.update((list) => list.map((t) => (t.id === task.id ? result.task : t)));
+    }
+  }
+
   async remove(task: Task): Promise<void> {
     if (!this.api) return;
     if (await this.api.deleteTask(task.id)) {

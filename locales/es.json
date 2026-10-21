@@ -51,6 +51,19 @@
       "quick_capture": "Captura rápida"
     }
   },
+  "today": {
+    "overdue": "Atrasadas",
+    "forToday": "Para hoy",
+    "empty": "No tienes nada pendiente para hoy.",
+    "subtitle": "{{date}} · {{pending}} · {{overdue}}",
+    "pending": "{{count}} pendientes",
+    "pendingOne": "1 pendiente",
+    "overdueCount": "{{count}} atrasadas",
+    "overdueOne": "1 atrasada",
+    "dueToday": "Hoy",
+    "dueYesterday": "Ayer",
+    "dueDaysAgo": "Hace {{days}} días"
+  },
   "tasks": {
     "new": "Nueva tarea",
     "empty": "Todavía no tienes tareas.",
@@ -73,6 +86,7 @@
       "save": "Guardar",
       "cancel": "Cancelar"
     },
+    "forToday": "Para hoy",
     "edit": "Editar",
     "delete": "Eliminar",
     "complete": "Completar tarea",
