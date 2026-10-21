@@ -145,6 +145,27 @@ export const migrations: Migration[] = [
       CREATE INDEX idx_note_links_key ON note_links (key);
     `,
   },
+  {
+    version: 9,
+    name: 'bugs',
+    // AUTOINCREMENT so the BUG-n identifier of a deleted bug is never handed out again.
+    up: `
+      CREATE TABLE bugs (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        title      TEXT NOT NULL,
+        symptom    TEXT NOT NULL DEFAULT '',
+        impact     TEXT NOT NULL DEFAULT '',
+        root_cause TEXT NOT NULL DEFAULT '',
+        solution   TEXT NOT NULL DEFAULT '',
+        severity   TEXT NOT NULL DEFAULT 'medium' CHECK (severity IN ('high', 'medium', 'low')),
+        status     TEXT NOT NULL DEFAULT 'new'
+                   CHECK (status IN ('new', 'analysis', 'resolved', 'verified')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX idx_bugs_status ON bugs (status);
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {

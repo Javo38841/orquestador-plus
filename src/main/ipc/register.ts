@@ -2,6 +2,7 @@ import { app, ipcMain } from 'electron';
 import type Database from 'better-sqlite3';
 import { IpcChannel, type AppInfo } from '../../shared/ipc';
 import { CHANNEL } from '../channel';
+import { createBug, deleteBug, listBugs, setBugStatus, updateBug } from '../bugs/bugs';
 import { captureItem, convertToTask, discardItem, listInbox } from '../inbox/inbox';
 import {
   createProject,
@@ -87,4 +88,16 @@ export function registerIpcHandlers(db: Database.Database | null, wikiDir: strin
   ipcMain.handle(IpcChannel.deleteNote, (_event, slug: unknown) =>
     withWiki((w) => deleteNote(w, slug)),
   );
+
+  ipcMain.handle(IpcChannel.listBugs, () => withDb(listBugs));
+  ipcMain.handle(IpcChannel.createBug, (_event, input: unknown) =>
+    withDb((d) => createBug(d, input)),
+  );
+  ipcMain.handle(IpcChannel.updateBug, (_event, id: unknown, input: unknown) =>
+    withDb((d) => updateBug(d, id, input)),
+  );
+  ipcMain.handle(IpcChannel.setBugStatus, (_event, id: unknown, status: unknown) =>
+    withDb((d) => setBugStatus(d, id, status)),
+  );
+  ipcMain.handle(IpcChannel.deleteBug, (_event, id: unknown) => withDb((d) => deleteBug(d, id)));
 }
