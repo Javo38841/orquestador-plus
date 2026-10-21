@@ -34,6 +34,27 @@ export const migrations: Migration[] = [
       CREATE INDEX idx_inbox_items_created ON inbox_items (created_at DESC, id DESC);
     `,
   },
+  {
+    version: 3,
+    name: 'projects_and_tasks',
+    up: `
+      CREATE TABLE projects (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name       TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      ) STRICT;
+      CREATE UNIQUE INDEX idx_projects_name ON projects (name COLLATE NOCASE);
+      CREATE TABLE tasks (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        title      TEXT NOT NULL,
+        status     TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'done')),
+        due_date   TEXT,
+        project_id INTEGER REFERENCES projects (id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX idx_tasks_project ON tasks (project_id);
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {

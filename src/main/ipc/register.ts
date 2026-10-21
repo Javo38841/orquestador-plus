@@ -3,6 +3,16 @@ import type Database from 'better-sqlite3';
 import { IpcChannel, type AppInfo } from '../../shared/ipc';
 import { CHANNEL } from '../channel';
 import { captureItem, listInbox } from '../inbox/inbox';
+import {
+  createProject,
+  createTask,
+  deleteProject,
+  deleteTask,
+  listProjects,
+  listTasks,
+  setTaskStatus,
+  updateTask,
+} from '../tasks/tasks';
 
 export function registerIpcHandlers(db: Database.Database | null): void {
   ipcMain.handle(IpcChannel.getAppInfo, (): AppInfo => ({
@@ -21,4 +31,27 @@ export function registerIpcHandlers(db: Database.Database | null): void {
     if (!db) throw new Error('Database not available');
     return listInbox(db);
   });
+
+  const withDb = <T>(run: (database: Database.Database) => T): T => {
+    if (!db) throw new Error('Database not available');
+    return run(db);
+  };
+  ipcMain.handle(IpcChannel.listTasks, () => withDb(listTasks));
+  ipcMain.handle(IpcChannel.createTask, (_event, input: unknown) =>
+    withDb((d) => createTask(d, input)),
+  );
+  ipcMain.handle(IpcChannel.updateTask, (_event, id: unknown, input: unknown) =>
+    withDb((d) => updateTask(d, id, input)),
+  );
+  ipcMain.handle(IpcChannel.setTaskStatus, (_event, id: unknown, status: unknown) =>
+    withDb((d) => setTaskStatus(d, id, status)),
+  );
+  ipcMain.handle(IpcChannel.deleteTask, (_event, id: unknown) => withDb((d) => deleteTask(d, id)));
+  ipcMain.handle(IpcChannel.listProjects, () => withDb(listProjects));
+  ipcMain.handle(IpcChannel.createProject, (_event, name: unknown) =>
+    withDb((d) => createProject(d, name)),
+  );
+  ipcMain.handle(IpcChannel.deleteProject, (_event, id: unknown) =>
+    withDb((d) => deleteProject(d, id)),
+  );
 }

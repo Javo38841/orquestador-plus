@@ -50,5 +50,42 @@
     "source": {
       "quick_capture": "Captura rápida"
     }
+  },
+  "tasks": {
+    "new": "Nueva tarea",
+    "empty": "Todavía no tienes tareas.",
+    "emptyPending": "No tienes tareas pendientes.",
+    "columns": {
+      "task": "Tarea",
+      "project": "Proyecto",
+      "due": "Vence"
+    },
+    "loose": "Suelta",
+    "showCompleted": "Mostrar completadas",
+    "form": {
+      "title": "Título",
+      "titlePlaceholder": "¿Qué hay que hacer?",
+      "due": "Fecha límite",
+      "project": "Proyecto",
+      "noProject": "Sin proyecto (suelta)",
+      "newProject": "Crear proyecto nuevo…",
+      "newProjectName": "Nombre del proyecto",
+      "save": "Guardar",
+      "cancel": "Cancelar"
+    },
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "complete": "Completar tarea",
+    "confirmDelete": "¿Eliminar esta tarea?",
+    "confirmYes": "Sí, eliminar",
+    "confirmNo": "No",
+    "errors": {
+      "empty": "Escribe un título para la tarea",
+      "tooLong": "Máximo 200 caracteres",
+      "invalidDate": "La fecha no es válida",
+      "invalidProject": "El proyecto no es válido",
+      "notFound": "La tarea ya no existe",
+      "failed": "No se pudo guardar la tarea"
+    }
   }
 }
