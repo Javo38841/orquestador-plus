@@ -27,6 +27,8 @@ import {
   setTopicStatus,
   updateTopic,
 } from '../learning/learning';
+import { createLink, listLinks, revokeLink } from '../portal/links';
+import type { PortalServer } from '../portal/server';
 import { search } from '../search/search';
 import type { ReminderScheduler } from '../reminders/scheduler';
 import { getRemindersEnabled, setRemindersEnabled } from '../settings/settings';
@@ -36,6 +38,7 @@ export function registerIpcHandlers(
   db: Database.Database | null,
   wikiDir: string,
   reminders: Pick<ReminderScheduler, 'refresh'> = { refresh: () => undefined },
+  portal: PortalServer | null = null,
 ): void {
   ipcMain.handle(IpcChannel.getAppInfo, (): AppInfo => ({
     name: app.getName(),
@@ -161,6 +164,23 @@ export function registerIpcHandlers(
   );
 
   ipcMain.handle(IpcChannel.search, (_event, text: unknown) => withDb((d) => search(d, text)));
+
+  const withPortal = <T>(run: (server: PortalServer) => T): T => {
+    if (!portal) throw new Error('Portal not available');
+    return run(portal);
+  };
+  ipcMain.handle(IpcChannel.getPortalStatus, () => withPortal((p) => p.status()));
+  ipcMain.handle(IpcChannel.setPortalEnabled, (_event, enabled: unknown) => {
+    if (typeof enabled !== 'boolean') throw new Error('Invalid portal setting');
+    return withPortal((p) => (enabled ? p.start() : p.stop()));
+  });
+  ipcMain.handle(IpcChannel.listPortalLinks, () => withDb((d) => listLinks(d)));
+  ipcMain.handle(IpcChannel.createPortalLink, (_event, input: unknown) =>
+    withDb((d) => createLink(d, input)),
+  );
+  ipcMain.handle(IpcChannel.revokePortalLink, (_event, id: unknown) =>
+    withDb((d) => revokeLink(d, id)),
+  );
 
   ipcMain.handle(IpcChannel.getRemindersEnabled, () => withDb(getRemindersEnabled));
   ipcMain.handle(IpcChannel.setRemindersEnabled, (_event, enabled: unknown) =>

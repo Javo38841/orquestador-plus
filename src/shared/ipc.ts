@@ -3,6 +3,7 @@ import type { Topic, TopicInput, TopicResult, TopicStatus } from './learning';
 import type { Snippet, SnippetInput, SnippetResult } from './snippets';
 import type { JournalEntry, JournalResult } from './journal';
 import type { CaptureResult, InboxItem } from './inbox';
+import type { PortalLinkInput, PortalLinkResult, PortalLink, PortalStatus } from './portal';
 import type { SearchResult } from './search';
 import type { NoteInput, NoteResult, NoteSummary } from './wiki';
 import type { Project, ProjectResult, Task, TaskInput, TaskResult, TaskStatus } from './tasks';
@@ -52,6 +53,11 @@ export const IpcChannel = {
   listJournal: 'journal:list',
   saveJournalEntry: 'journal:save',
   search: 'search:query',
+  getPortalStatus: 'portal:get-status',
+  setPortalEnabled: 'portal:set-enabled',
+  listPortalLinks: 'portal:list-links',
+  createPortalLink: 'portal:create-link',
+  revokePortalLink: 'portal:revoke-link',
   getRemindersEnabled: 'settings:get-reminders-enabled',
   setRemindersEnabled: 'settings:set-reminders-enabled',
 } as const;
@@ -124,6 +130,15 @@ export interface OrquestadorApi {
   saveJournalEntry(date: string, text: string): Promise<JournalResult>;
   /** Global search over tasks and inbox items, at most 50 results by relevance (RF-10). */
   search(text: string): Promise<SearchResult[]>;
+  /** Whether the local-network report portal is listening, and where (RF-15). */
+  getPortalStatus(): Promise<PortalStatus>;
+  /** Starts or stops the portal. It is always off when the app starts. */
+  setPortalEnabled(enabled: boolean): Promise<PortalStatus>;
+  /** Portal links, newest first. */
+  listPortalLinks(): Promise<PortalLink[]>;
+  createPortalLink(input: PortalLinkInput): Promise<PortalLinkResult>;
+  /** Revokes a link: it stops accepting reports. Resolves false if it does not exist. */
+  revokePortalLink(id: number): Promise<boolean>;
   /** Whether task reminders show a notification (RF-18). */
   getRemindersEnabled(): Promise<boolean>;
   setRemindersEnabled(enabled: boolean): Promise<boolean>;

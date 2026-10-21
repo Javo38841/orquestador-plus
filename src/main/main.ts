@@ -5,6 +5,7 @@ import { appNameFor, CHANNEL, resolveDataDir } from './channel';
 import { openDatabase } from './db/database';
 import { registerIpcHandlers } from './ipc/register';
 import { createReminderScheduler, type ReminderScheduler } from './reminders/scheduler';
+import { createPortalServer, type PortalServer } from './portal/server';
 import { rebuildIndex } from './wiki/wiki';
 import { registerAppScheme, serveRenderer } from './protocol';
 import { createMainWindow } from './window';
@@ -20,6 +21,7 @@ registerAppScheme();
 
 let db: Database.Database | null = null;
 let reminders: ReminderScheduler | null = null;
+let portal: PortalServer | null = null;
 // Notifications must stay referenced until shown or they may be garbage collected.
 const shownNotifications = new Set<Notification>();
 
@@ -50,7 +52,9 @@ if (!app.requestSingleInstanceLock()) {
         notification.show();
       },
     });
-    registerIpcHandlers(db, wikiDir, reminders);
+    // Created off: nothing listens until the user turns the portal on (RF-15).
+    portal = createPortalServer({ db });
+    registerIpcHandlers(db, wikiDir, reminders, portal);
     serveRenderer(path.join(__dirname, '../renderer/browser'));
     createMainWindow(appName);
     // After the window exists, so overdue reminders from while the app was closed show now.
@@ -68,5 +72,6 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   reminders?.stop();
+  void portal?.stop();
   db?.close();
 });

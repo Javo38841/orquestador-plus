@@ -2,12 +2,14 @@
 
 export const CAPTURE_MAX_LENGTH = 500;
 
-export type InboxSource = 'quick_capture';
+export type InboxSource = 'quick_capture' | 'portal';
 
 export interface InboxItem {
   id: number;
   title: string;
   source: InboxSource;
+  /** Who sent it, for items that came through the report portal (RF-15). */
+  reporter?: string;
   /** ISO-8601 UTC timestamp. */
   createdAt: string;
 }

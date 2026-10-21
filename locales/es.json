@@ -58,7 +58,8 @@
   "inbox": {
     "empty": "La bandeja está vacía.",
     "source": {
-      "quick_capture": "Captura rápida"
+      "quick_capture": "Captura rápida",
+      "portal": "Portal"
     },
     "classify": {
       "title": "Clasificar",
@@ -389,5 +390,70 @@
       "late": "Recordatorio atrasado · era el {{date}} a las {{time}}"
     },
     "enabled": "Avisarme de los recordatorios de tareas"
+  },
+  "portal": {
+    "status": {
+      "on": "Portal encendido",
+      "off": "Portal apagado",
+      "turnOn": "Encender portal",
+      "turnOff": "Apagar portal",
+      "address": "Dirección en la red local",
+      "noNetwork": "No se encontró una red local. Conéctate a una para compartir enlaces.",
+      "failed": "No se pudo cambiar el estado del portal",
+      "offNote": "Mientras esté apagado nadie puede enviar reportes."
+    },
+    "links": {
+      "title": "Enlaces",
+      "empty": "Todavía no hay enlaces.",
+      "create": "Crear enlace",
+      "project": "Proyecto",
+      "noProject": "Sin proyecto",
+      "expiry": "Vence en",
+      "hours": "{{n}} h",
+      "limit": "Máximo de envíos",
+      "copy": "Copiar enlace",
+      "copied": "Copiado",
+      "revoke": "Revocar",
+      "expires": "Vence {{date}}",
+      "uses": "{{used}} de {{max}} envíos",
+      "statusLabel": {
+        "active": "Vigente",
+        "expired": "Vencido",
+        "revoked": "Revocado",
+        "exhausted": "Sin envíos disponibles"
+      },
+      "copyFailed": "No se pudo copiar el enlace"
+    },
+    "outside": {
+      "label": "Acceso desde fuera de la red",
+      "note": "No disponible en esta versión. El portal solo funciona en tu red local."
+    },
+    "errors": {
+      "invalidProject": "El proyecto no existe",
+      "invalidExpiry": "El vencimiento debe estar entre 1 hora y 30 días",
+      "invalidLimit": "El máximo de envíos debe estar entre 1 y 500",
+      "failed": "No se pudo completar la acción"
+    },
+    "form": {
+      "title": "Enviar un reporte",
+      "intro": "Cuéntanos qué pasó. Solo la persona que te compartió este enlace lo recibirá.",
+      "name": "Tu nombre",
+      "description": "¿Qué ocurrió?",
+      "submit": "Enviar reporte",
+      "thanks": "¡Gracias! Tu reporte fue enviado.",
+      "back": "Enviar otro reporte",
+      "notFound": "Esta página no existe.",
+      "errors": {
+        "unauthorized": "Este enlace no es válido.",
+        "forbidden": "Este enlace venció o fue revocado.",
+        "limit": "Este enlace ya recibió todos los reportes permitidos.",
+        "empty_name": "Escribe tu nombre.",
+        "name_too_long": "El nombre es demasiado largo.",
+        "empty_description": "Describe lo que ocurrió.",
+        "description_too_long": "La descripción es demasiado larga.",
+        "bad_request": "No se entendió el envío.",
+        "too_large": "El envío es demasiado grande."
+      }
+    }
   }
 }
