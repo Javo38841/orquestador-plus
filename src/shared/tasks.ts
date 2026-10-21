@@ -4,8 +4,13 @@ export const TASK_TITLE_MAX_LENGTH = 200;
 export const PROJECT_NAME_MAX_LENGTH = 60;
 export const TAG_MAX_LENGTH = 30;
 
-/** `in_progress` joins this list with the board story. */
-export type TaskStatus = 'todo' | 'done';
+export type TaskStatus = 'todo' | 'in_progress' | 'done';
+
+export const TASK_STATUSES: readonly TaskStatus[] = ['todo', 'in_progress', 'done'];
+
+export function isTaskStatus(value: unknown): value is TaskStatus {
+  return typeof value === 'string' && (TASK_STATUSES as readonly string[]).includes(value);
+}
 
 export interface Project {
   id: number;
@@ -27,6 +32,8 @@ export interface Task {
   tags: string[];
   /** ISO-8601 UTC timestamp. */
   createdAt: string;
+  /** ISO-8601 UTC timestamp of when it was moved to done; null while not done. */
+  completedAt: string | null;
 }
 
 /** Fields the form sends. A new project is created by name together with the task. */
@@ -160,7 +167,7 @@ export function localDate(now: Date = new Date()): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-/** A pending task whose due date is before today. */
+/** An unfinished task (to do or in progress) whose due date is before today. */
 export function isOverdue(task: Pick<Task, 'status' | 'dueDate'>, today: string): boolean {
-  return task.status === 'todo' && task.dueDate !== null && task.dueDate < today;
+  return task.status !== 'done' && task.dueDate !== null && task.dueDate < today;
 }

@@ -78,6 +78,34 @@ export const migrations: Migration[] = [
       CREATE INDEX idx_task_tags_tag ON task_tags (tag_id);
     `,
   },
+  {
+    version: 6,
+    name: 'tasks_in_progress',
+    // SQLite cannot alter a CHECK, so the table is rebuilt. Dropping `tasks` would cascade
+    // into `task_tags`, hence the tag links are parked in a temp table meanwhile.
+    up: `
+      CREATE TEMP TABLE task_tags_backup AS SELECT task_id, tag_id FROM task_tags;
+      CREATE TABLE tasks_new (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        title        TEXT NOT NULL,
+        status       TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'done')),
+        due_date     TEXT,
+        project_id   INTEGER REFERENCES projects (id) ON DELETE SET NULL,
+        created_at   TEXT NOT NULL,
+        for_today    INTEGER NOT NULL DEFAULT 0 CHECK (for_today IN (0, 1)),
+        completed_at TEXT
+      ) STRICT;
+      INSERT INTO tasks_new (id, title, status, due_date, project_id, created_at, for_today, completed_at)
+        SELECT id, title, status, due_date, project_id, created_at, for_today,
+               CASE WHEN status = 'done' THEN created_at END
+        FROM tasks;
+      DROP TABLE tasks;
+      ALTER TABLE tasks_new RENAME TO tasks;
+      CREATE INDEX idx_tasks_project ON tasks (project_id);
+      INSERT INTO task_tags (task_id, tag_id) SELECT task_id, tag_id FROM task_tags_backup;
+      DROP TABLE task_tags_backup;
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {

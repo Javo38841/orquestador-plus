@@ -96,6 +96,16 @@
     "dueYesterday": "Ayer",
     "dueDaysAgo": "Hace {{days}} días"
   },
+  "board": {
+    "active": "Activas",
+    "emptyColumn": "Sin tareas",
+    "move": "Mover a…",
+    "columns": {
+      "todo": "Por hacer",
+      "inProgress": "En curso",
+      "done": "Hecho"
+    }
+  },
   "tasks": {
     "new": "Nueva tarea",
     "empty": "Todavía no tienes tareas.",
