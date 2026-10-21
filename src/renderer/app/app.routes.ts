@@ -4,11 +4,12 @@ import { TodayPage } from './features/today/today-page';
 import { BoardPage } from './features/board/board-page';
 import { TasksPage } from './features/tasks/tasks-page';
 import { SectionPage } from './features/section-page/section-page';
+import { BugsPage } from './features/bugs/bugs-page';
 import { WikiPage } from './features/wiki/wiki-page';
 import { NAVIGATION } from './layout/navigation';
 
 const sectionRoutes: Routes = NAVIGATION.flatMap((group) => group.items)
-  .filter((item) => !['inbox', 'tasks', 'today', 'board', 'wiki'].includes(item.path))
+  .filter((item) => !['inbox', 'tasks', 'today', 'board', 'bugs', 'wiki'].includes(item.path))
   .map((item) => ({
     path: item.path,
     component: SectionPage,
@@ -21,6 +22,7 @@ export const routes: Routes = [
   { path: 'inbox', component: InboxPage },
   { path: 'tasks', component: TasksPage },
   { path: 'board', component: BoardPage },
+  { path: 'bugs', component: BugsPage },
   {
     path: 'wiki',
     component: WikiPage,

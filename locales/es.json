@@ -219,5 +219,49 @@
       "notFound": "La nota ya no existe",
       "io": "No se pudo guardar el archivo de la nota"
     }
+  },
+  "bugs": {
+    "new": "Nuevo bug",
+    "empty": "Todavía no hay bugs registrados.",
+    "emptyFilter": "No hay bugs en este filtro.",
+    "pick": "Elige un bug o registra uno nuevo.",
+    "filters": {
+      "open": "Abiertos",
+      "resolved": "Resueltos",
+      "all": "Todos"
+    },
+    "status": {
+      "new": "Nuevo",
+      "analysis": "En análisis",
+      "resolved": "Resuelto",
+      "verified": "Verificado"
+    },
+    "severity": {
+      "high": "Alta",
+      "medium": "Media",
+      "low": "Baja"
+    },
+    "fields": {
+      "title": "Título",
+      "symptom": "Síntoma",
+      "impact": "Impacto",
+      "rootCause": "Causa raíz",
+      "solution": "Solución",
+      "severity": "Severidad",
+      "status": "Estado"
+    },
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "confirmDelete": "¿Eliminar este bug?",
+    "confirmYes": "Sí, eliminar",
+    "confirmNo": "No",
+    "errors": {
+      "empty": "Escribe un título para el bug",
+      "tooLong": "El título o algún texto es demasiado largo",
+      "invalid": "El bug no es válido",
+      "notFound": "El bug ya no existe"
+    }
   }
 }

@@ -48,6 +48,13 @@
                       >{{ inbox.count() }}</span
                     >
                   }
+                  @if (item.path === 'bugs' && bugs.openCount() > 0) {
+                    <span
+                      class="rounded-full bg-accent px-2 text-xs font-semibold text-accent-ink"
+                      data-testid="bugs-count"
+                      >{{ bugs.openCount() }}</span
+                    >
+                  }
                 </a>
               </li>
             }
