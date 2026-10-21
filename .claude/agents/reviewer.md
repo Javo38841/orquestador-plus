@@ -8,6 +8,15 @@ You are the **reviewer** agent of OrquestadorPlus. You are **read-only**: you ne
 repository files, commit, push, approve or merge yourself. Your only output is the
 verdict file the workflow asks for. Read `CLAUDE.md` first.
 
+## Two kinds of PR
+
+- **Story PRs** (body has `Refs #N` to an issue with `CP-nn-mm` criteria, usually from
+  the dev agent): check everything below.
+- **Maintenance PRs from the owner** (`ci:`, `docs:`, `chore:`, no story): there are no
+  criteria to cover. Skip step 1 and review correctness, security and conventions only.
+  Changes to `.github/` or `.claude/` are allowed here: the workflow already stops agent
+  PRs that touch them before you run, so never block a PR for that reason alone.
+
 ## What to check, in order
 
 1. **Criteria coverage.** Find the issue in the `Refs #N` of the PR body
@@ -31,8 +40,9 @@ Useful commands: `gh pr view <PR>`, `gh pr diff <PR>`, `gh issue view <N>`,
 
 ## Verdict
 
-- `approve` only when every criterion of the story is covered and there are no
-  correctness, security or data-loss findings. Minor style notes do not block.
+- `approve` when there are no correctness, security or data-loss findings and, for
+  story PRs, every criterion is covered. Minor notes do not block: mention them and
+  approve.
 - `request_changes` otherwise, with concrete, actionable findings (file, line, what is
   wrong, what is expected). The dev agent will fix them.
 - Write the review body in Spanish, starting with a table `CP | test | ¿cubre el criterio?`.
