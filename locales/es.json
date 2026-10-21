@@ -1,0 +1,40 @@
+{
+  "app": {
+    "name": "OrquestadorPlus",
+    "devBanner": "DEV · versión de desarrollo, con datos separados de producción",
+    "searchAll": "Buscar en todo",
+    "offline": "Datos locales, sin conexión",
+    "databaseReady": "Base de datos lista",
+    "databaseUnavailable": "Base de datos no disponible"
+  },
+  "nav": {
+    "groups": {
+      "main": "Principal",
+      "records": "Registro",
+      "more": "Más"
+    },
+    "today": "Hoy",
+    "inbox": "Bandeja de entrada",
+    "tasks": "Tareas",
+    "board": "Tablero",
+    "bugs": "Bugs e incidencias",
+    "wiki": "Wiki",
+    "journal": "Bitácora",
+    "snippets": "Snippets",
+    "learning": "Aprendizaje",
+    "portal": "Portal de reportes"
+  },
+  "pages": {
+    "today": "Lo que vence hoy, lo atrasado y lo que marcaste para hoy.",
+    "inbox": "Todo lo que captures queda aquí hasta que decidas qué hacer con ello.",
+    "tasks": "Todas tus tareas, con y sin proyecto. Aquí también administras las que se repiten.",
+    "board": "Las tareas en movimiento, con y sin proyecto.",
+    "bugs": "Cada ficha guarda síntoma, impacto, causa raíz y solución.",
+    "wiki": "Notas y documentación con enlaces entre ellas.",
+    "journal": "Tu bitácora diaria de desarrollo.",
+    "snippets": "Bloques de código y comandos listos para copiar.",
+    "learning": "Temas de aprendizaje y su avance.",
+    "portal": "Un formulario temporal para que otras personas te reporten problemas.",
+    "comingSoon": "Esta sección todavía no está construida."
+  }
+}

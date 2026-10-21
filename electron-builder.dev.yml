@@ -1,0 +1,18 @@
+# Dev channel: installs side by side with production and never shares its data.
+extends: ./electron-builder.yml
+appId: io.github.javo38841.orquestadorplus.dev
+productName: OrquestadorPlus Dev
+executableName: orquestador-plus-dev
+
+win:
+  target: nsis
+  artifactName: orquestador-plus-dev-${version}-setup.${ext}
+
+linux:
+  target:
+    - AppImage
+    - rpm
+  category: Development
+  synopsis: Centro de mando personal para desarrolladores (versión de desarrollo)
+  maintainer: Javo38841
+  artifactName: orquestador-plus-dev-${version}-${arch}.${ext}
