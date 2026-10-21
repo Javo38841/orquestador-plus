@@ -60,27 +60,35 @@ Three agents run in GitHub Actions (`anthropics/claude-code-action`), each with 
 own GitHub App identity. The owner only acts at the two ends: approving what gets
 built and promoting `develop` to `main`.
 
-1. **planner** (`orquestador-dev` app): an issue labeled `idea` by the owner is
-   rewritten as a story with `CP-nn-mm` acceptance criteria and labeled `por-aprobar`.
-2. Owner reviews the story and adds the `agente` label.
-3. **dev** (`orquestador-dev` app): creates a branch, writes tests first, implements,
-   runs the checks, commits and opens a PR to `develop` with `Refs #N`.
-4. CI runs on Linux and Windows.
-5. **reviewer** (`orquestador-review` app): reviews and either approves (and enables
-   auto-merge) or requests changes. dev gets at most 2 fix rounds; after that the PR
-   is labeled `necesita-humano`.
+1. **planner** (`agent-planner.yml`, `orquestador-dev` app): an issue labeled `idea`
+   by the owner is rewritten as a story with `CP-nn-mm` criteria, labeled `por-aprobar`.
+2. The owner approves the story by labeling it `en-cola` (or `agente` to start now).
+3. **queue** (`agent-queue.yml`): when nothing is in progress, the oldest `en-cola`
+   story gets `agente`. It runs after every merge to `develop` and hourly. It pauses
+   while anything is labeled `necesita-humano`.
+4. **dev** (`agent-dev.yml`, `orquestador-dev` app): labels the story `en-progreso`,
+   creates a branch, writes tests first, implements, runs the checks, commits and
+   opens a PR to `develop` with `Refs #N`. Instructions: `.claude/agents/dev.md`.
+5. CI runs on Linux and Windows.
+6. **reviewer** (`agent-review.yml`, `orquestador-review` app): a red CI goes back to
+   dev as "changes requested"; a green CI gets a read-only review
+   (`.claude/agents/reviewer.md`) that approves and squash-merges, or requests changes.
+   After 3 rounds with changes requested the PR is labeled `necesita-humano`.
+7. The merged story is labeled `en-develop`. The owner tests the Dev build and closes it.
 
-Guardrails: agent workflows only run when the triggering actor is the repo owner;
-the dev app has no `workflows` permission, so agents cannot edit CI; every run has a
-timeout.
+Labels: `idea`, `por-aprobar`, `en-cola`, `agente`, `en-progreso`, `en-develop`,
+`necesita-humano`, `story`, `bug`.
+
+Guardrails: agent workflows only run for the owner or the two app bots; the dev app
+has no `workflows` permission, so agents cannot edit CI; agent PRs touching `.github/`
+or `.claude/` are never auto-approved; every run has a timeout.
 
 ## Rules for Claude Code in interactive sessions
 
-- Claude Code **never** runs `git commit`, `git push`, `gh pr create` or `gh pr merge`
-  in a local session: it proposes the exact commands and the owner runs them.
+- On the owner's request, Claude Code runs commits, pushes, PRs and merges itself in
+  this repo, following the same branch and PR flow as everyone else.
 - No Claude attribution (`Co-Authored-By`, "Generated with Claude Code") in commits or
   PRs, local or from agents.
-- Claude Code may create and switch local branches using the right prefix.
 
 ## How an agent works on a story
 
