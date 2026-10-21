@@ -21,6 +21,19 @@ export const migrations: Migration[] = [
       ) STRICT;
     `,
   },
+  {
+    version: 2,
+    name: 'inbox_items',
+    up: `
+      CREATE TABLE inbox_items (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        title      TEXT NOT NULL,
+        source     TEXT NOT NULL CHECK (source IN ('quick_capture')),
+        created_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX idx_inbox_items_created ON inbox_items (created_at DESC, id DESC);
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {
