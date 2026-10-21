@@ -14,10 +14,10 @@ Aplicación de escritorio para **Windows 10/11** y **Fedora**, hecha con Electro
 
 ## Ramas y versiones
 
-| Rama | Qué es |
-| --- | --- |
+| Rama      | Qué es                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------ |
 | `develop` | Integración. Cada merge publica la build **OrquestadorPlus Dev** en el pre-release `dev-latest`. |
-| `main` | Producción. Cada tag `vX.Y.Z` publica los instaladores en GitHub Releases. |
+| `main`    | Producción. Cada tag `vX.Y.Z` publica los instaladores en GitHub Releases.                       |
 
 La build Dev y la de producción se instalan como apps distintas y no comparten datos.
 

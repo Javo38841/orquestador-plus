@@ -1,0 +1,33 @@
+# Production build. The Dev channel extends this file (electron-builder.dev.yml).
+appId: io.github.javo38841.orquestadorplus
+productName: OrquestadorPlus
+executableName: orquestador-plus
+copyright: Copyright © 2026 Javo38841
+
+directories:
+  output: release
+
+files:
+  - dist/**/*
+  - '!dist/**/*.map'
+  - package.json
+
+publish: null
+
+win:
+  target: nsis
+  artifactName: orquestador-plus-${version}-setup.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  target:
+    - AppImage
+    - rpm
+  category: Development
+  synopsis: Centro de mando personal para desarrolladores
+  maintainer: Javo38841
+  artifactName: orquestador-plus-${version}-${arch}.${ext}

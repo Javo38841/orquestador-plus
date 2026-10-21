@@ -1,0 +1,88 @@
+name: Dev build
+
+# Every merge into develop publishes "OrquestadorPlus Dev" installers to the
+# `dev-latest` pre-release, replacing the previous ones.
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: dev-build
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: Linux
+          - os: windows-latest
+            label: Windows
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install rpm tooling
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (Dev channel)
+        run: npm run build
+        env:
+          ORQ_CHANNEL: dev
+
+      - name: Package installers
+        shell: bash
+        run: |
+          base=$(node -p "require('./package.json').version")
+          npx electron-builder --config electron-builder.dev.yml \
+            -c.extraMetadata.version="${base}-dev.${{ github.run_number }}"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dev-${{ matrix.label }}
+          path: |
+            release/*.exe
+            release/*.AppImage
+            release/*.rpm
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish dev-latest
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Replace the dev-latest pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete dev-latest --cleanup-tag --yes || true
+          gh release create dev-latest artifacts/* \
+            --prerelease \
+            --target "${{ github.sha }}" \
+            --title "OrquestadorPlus Dev (develop @ ${GITHUB_SHA::7})" \
+            --notes "Build automática de develop. Se instala aparte de producción y no comparte sus datos."

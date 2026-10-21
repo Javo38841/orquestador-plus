@@ -89,12 +89,12 @@ timeout.
 2. **Branch.** Work only on the current branch. Never create worktrees or directories
    outside the repo.
 3. **Tests first (ATDD).** At least one test per `CP` whose name starts with its ID
-   (`it('CP-03-02: …')`), in the layer the criterion declares (*unit*, *E2E*, *CI*,
-   *manual*). Then the code that makes them pass. Every service or component with
+   (`it('CP-03-02: …')`), in the layer the criterion declares (_unit_, _E2E_, _CI_,
+   _manual_). Then the code that makes them pass. Every service or component with
    logic also gets its own `*.spec.ts`, whether or not a `CP` asks for it.
 4. **Verify.** Run lint, type-check, unit tests and build, and report the real output.
 5. **Report.** Table `CP | test (file and name) | result`, plus anything left as
-   *manual*.
+   _manual_.
 
 If a criterion is ambiguous, has no layer, or misses an obvious edge case, say so
 instead of deciding: the owner validates criteria.
@@ -113,4 +113,36 @@ instead of deciding: the owner validates criteria.
 
 ## Commands
 
-Defined in `package.json` once the scaffold lands (`chore/scaffold`).
+```
+npm run dev            # ng serve + esbuild watch + Electron pointing at localhost:4200
+npm run lint           # ESLint (TS, Angular templates, renderer import boundaries)
+npm run format:check   # Prettier --check
+npm run typecheck      # tsc for renderer, renderer specs and electron code
+npm run test:main      # Vitest for src/main, run inside Electron's Node (native ABI)
+npm run test:renderer  # Vitest via ng test
+npm run build          # Angular + esbuild bundles into dist/ (Dev channel by default)
+npm run package:dir    # unpacked Dev build in release/ (what E2E launches)
+npm run e2e            # Playwright against the packaged app
+```
+
+The build channel comes from `ORQ_CHANNEL` (`prod` or anything else = `dev`). Only
+`release.yml` builds `prod`. E2E and local runs use a throwaway data folder through
+`ORQ_DATA_DIR`, never the real one.
+
+## Testing
+
+- **Main process unit tests** (`src/main/**/*.spec.ts`): real SQLite (in memory or a
+  temp folder), Electron APIs mocked with `vi.mock('electron')`.
+- **Renderer unit tests** (`src/renderer/**/*.spec.ts`): TestBed, with `DESKTOP_API`
+  provided as a fake. Never call `window.orquestador` directly.
+- **E2E** (`e2e/`): launch the packaged app with `launchApp()`. Only when a criterion
+  marked _E2E_ asks for it, plus the smoke tests.
+
+## CI/CD
+
+- `ci.yml` (every PR to `develop` or `main`): lint, format, type-check, unit tests,
+  build, `package:dir` and E2E, on Linux and Windows. Required checks: `Linux`,
+  `Windows`; PRs to `main` also need `Source branch` (only `develop` or `hotfix/*`).
+- `dev-build.yml` (push to `develop`): Dev installers to the `dev-latest` pre-release.
+- `release.yml` (tag `vX.Y.Z` on `main`, matching `package.json`): production
+  installers into a draft release.
