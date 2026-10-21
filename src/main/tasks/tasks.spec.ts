@@ -5,10 +5,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { openDatabase } from '../db/database';
 import { migrate, migrations } from '../db/migrations';
+import { localDate } from '../../shared/tasks';
 import {
   createProject,
   createTask,
   deleteProject,
+  deleteSeries,
   deleteTask,
   listProjects,
   listTags,
@@ -273,5 +275,212 @@ describe('task board status', () => {
     expect(() => raw.exec("UPDATE tasks SET status = 'in_progress' WHERE id = 1")).not.toThrow();
     raw.close();
     fs.rmSync(old, { recursive: true, force: true });
+  });
+});
+
+describe('recurring tasks (RF-06)', () => {
+  let dir: string;
+  let db: Database.Database;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orq-series-'));
+    db = openDatabase(dir);
+  });
+
+  afterEach(() => {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const make = (title: string, extra: object = {}) => {
+    const result = createTask(db, { title, dueDate: null, projectId: null, ...extra });
+    if (!result.ok) throw new Error(result.error);
+    return result.task;
+  };
+  const weekly = { kind: 'weekly', weekday: 5 };
+  const noon = (date: string) => new Date(`${date}T12:00:00`);
+  const open = () => listTasks(db).filter((t) => t.status !== 'done');
+
+  it('CP-06-02: completing a "once" task creates nothing', () => {
+    const task = make('Una vez', { recurrence: { kind: 'once' } });
+    expect(task.seriesId).toBeNull();
+    setTaskStatus(db, task.id, 'done');
+    expect(listTasks(db)).toHaveLength(1);
+  });
+
+  it('CP-06-03: completing a daily instance creates the next one with title, project and tags', () => {
+    const task = make('Revisar backups', {
+      dueDate: '2026-03-10',
+      newProjectName: 'infra',
+      tags: ['ops'],
+      recurrence: { kind: 'daily' },
+    });
+    expect(task.recurrence).toEqual({ kind: 'daily' });
+    const result = setTaskStatus(db, task.id, 'done', noon('2026-03-10'));
+    expect(result).toMatchObject({ ok: true, task: { status: 'done' } });
+
+    const next = open();
+    expect(next).toHaveLength(1);
+    expect(next[0]).toMatchObject({
+      title: 'Revisar backups',
+      dueDate: '2026-03-11',
+      projectId: task.projectId,
+      tags: ['ops'],
+      status: 'todo',
+      seriesId: task.seriesId,
+    });
+  });
+
+  it('CP-06-03: the next instance and the completion are one transaction', () => {
+    const task = make('Atómica', { dueDate: '2026-03-10', recurrence: { kind: 'daily' } });
+    db.exec(`CREATE TRIGGER boom BEFORE INSERT ON tasks BEGIN SELECT RAISE(ABORT, 'boom'); END`);
+    expect(() => setTaskStatus(db, task.id, 'done', noon('2026-03-10'))).toThrow();
+    db.exec('DROP TRIGGER boom');
+    expect(listTasks(db)[0]).toMatchObject({ status: 'todo', completedAt: null });
+  });
+
+  it('CP-06-04: weekly completes into the next chosen weekday', () => {
+    const task = make('Semanal', { dueDate: '2026-03-06', recurrence: weekly });
+    setTaskStatus(db, task.id, 'done', noon('2026-03-06'));
+    expect(open()[0].dueDate).toBe('2026-03-13');
+  });
+
+  it('CP-06-05 and CP-06-06: monthly day 31 clamps in February and returns to 31', () => {
+    const task = make('Mensual', {
+      dueDate: '2026-01-31',
+      recurrence: { kind: 'monthly', monthDay: 31 },
+    });
+    setTaskStatus(db, task.id, 'done', noon('2026-01-31'));
+    const feb = open()[0];
+    expect(feb.dueDate).toBe('2026-02-28');
+    setTaskStatus(db, feb.id, 'done', noon('2026-02-28'));
+    expect(open()[0].dueDate).toBe('2026-03-31');
+  });
+
+  it('CP-06-07: an overdue instance yields one instance on the first future date', () => {
+    const task = make('Atrasada', { dueDate: '2026-02-20', recurrence: weekly });
+    setTaskStatus(db, task.id, 'done', noon('2026-03-10'));
+    expect(open()).toHaveLength(1);
+    expect(open()[0].dueDate).toBe('2026-03-13');
+    expect(open()[0].dueDate! >= '2026-03-10').toBe(true);
+  });
+
+  it('CP-06-08: reopening an instance that already generated its successor keeps one open', () => {
+    const task = make('Reabrir', { dueDate: '2026-03-06', recurrence: weekly });
+    setTaskStatus(db, task.id, 'done', noon('2026-03-06'));
+    setTaskStatus(db, task.id, 'todo');
+    expect(open()).toHaveLength(1);
+    expect(open()[0].id).toBe(task.id);
+    expect(listTasks(db)).toHaveLength(1);
+
+    // Completing again regenerates a single successor, not a duplicate.
+    setTaskStatus(db, task.id, 'done', noon('2026-03-06'));
+    setTaskStatus(db, task.id, 'done', noon('2026-03-06'));
+    expect(listTasks(db)).toHaveLength(2);
+  });
+
+  it('CP-06-08: a successor already in progress wins and the reopened task leaves the series', () => {
+    const task = make('En curso', { dueDate: '2026-03-06', recurrence: weekly });
+    setTaskStatus(db, task.id, 'done', noon('2026-03-06'));
+    const next = open()[0];
+    setTaskStatus(db, next.id, 'in_progress');
+    setTaskStatus(db, task.id, 'todo');
+    expect(open().filter((t) => t.seriesId !== null)).toHaveLength(1);
+    expect(open().find((t) => t.id === next.id)?.seriesId).not.toBeNull();
+  });
+
+  it('CP-06-10: editing the rule changes the open instance and the following ones only', () => {
+    const first = make('Cambia', { dueDate: '2026-03-06', recurrence: weekly });
+    setTaskStatus(db, first.id, 'done', noon('2026-03-06'));
+    const second = open()[0];
+    const result = updateTask(db, second.id, {
+      title: 'Cambia',
+      dueDate: '2026-03-13',
+      projectId: null,
+      recurrence: { kind: 'daily' },
+    });
+    expect(result).toMatchObject({ ok: true, task: { recurrence: { kind: 'daily' } } });
+    setTaskStatus(db, second.id, 'done', noon('2026-03-13'));
+    expect(open()[0].dueDate).toBe('2026-03-14');
+    const completed = listTasks(db).find((t) => t.id === first.id)!;
+    expect(completed).toMatchObject({ status: 'done', dueDate: '2026-03-06' });
+  });
+
+  it('CP-06-10: a plain task can become a series and a series can become "once"', () => {
+    const task = make('Plana', { dueDate: '2026-03-06' });
+    const base = { title: 'Plana', dueDate: '2026-03-06', projectId: null };
+    const made = updateTask(db, task.id, { ...base, recurrence: weekly });
+    expect(made).toMatchObject({ ok: true, task: { recurrence: weekly } });
+    const plain = updateTask(db, task.id, { ...base, recurrence: { kind: 'once' } });
+    expect(plain).toMatchObject({ ok: true, task: { seriesId: null } });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM task_series').get()).toEqual({ n: 0 });
+  });
+
+  it('CP-06-11: deleting a series removes it and its open instance, keeping the history', () => {
+    const first = make('Serie', { dueDate: '2026-03-06', recurrence: weekly });
+    setTaskStatus(db, first.id, 'done', noon('2026-03-06'));
+    const second = open()[0];
+    expect(deleteSeries(db, second.seriesId)).toBe(true);
+    const left = listTasks(db);
+    expect(left).toHaveLength(1);
+    expect(left[0]).toMatchObject({ id: first.id, status: 'done', seriesId: null });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM task_series').get()).toEqual({ n: 0 });
+    expect(deleteSeries(db, 999)).toBe(false);
+    expect(deleteSeries(db, 'x')).toBe(false);
+  });
+
+  it('deleting the open instance directly also ends the series', () => {
+    const task = make('Suelta serie', { dueDate: '2026-03-06', recurrence: weekly });
+    expect(deleteTask(db, task.id)).toBe(true);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM task_series').get()).toEqual({ n: 0 });
+  });
+
+  it('CP-06-12: main rejects invalid rules with a specific error', () => {
+    const base = { title: 'X', dueDate: '2026-03-06', projectId: null };
+    expect(createTask(db, { ...base, recurrence: { kind: 'weekly' } })).toEqual({
+      ok: false,
+      error: 'recurrence_weekday',
+    });
+    expect(createTask(db, { ...base, recurrence: { kind: 'monthly', monthDay: 32 } })).toEqual({
+      ok: false,
+      error: 'recurrence_month_day',
+    });
+    expect(createTask(db, { ...base, dueDate: null, recurrence: weekly })).toEqual({
+      ok: false,
+      error: 'recurrence_due_required',
+    });
+    expect(createTask(db, { ...base, recurrence: 'daily' })).toEqual({
+      ok: false,
+      error: 'invalid_recurrence',
+    });
+    expect(listTasks(db)).toHaveLength(0);
+  });
+
+  it('CP-06-14: migration 7 keeps existing tasks intact and without series', () => {
+    const old = fs.mkdtempSync(path.join(os.tmpdir(), 'orq-mig-'));
+    const raw = new Database(path.join(old, 'datos.db'));
+    raw.pragma('foreign_keys = ON');
+    migrate(
+      raw,
+      migrations.filter((m) => m.version <= 6),
+    );
+    raw.exec(`
+      INSERT INTO tasks (title, status, due_date, created_at) VALUES ('a', 'todo', '2026-03-01', '2026-01-01T00:00:00.000Z');
+      INSERT INTO tasks (title, status, created_at, completed_at) VALUES ('b', 'done', '2026-01-02T00:00:00.000Z', '2026-01-03T00:00:00.000Z');
+    `);
+    migrate(raw);
+    expect(
+      raw.prepare('SELECT title, status, due_date, series_id FROM tasks ORDER BY id').all(),
+    ).toEqual([
+      { title: 'a', status: 'todo', due_date: '2026-03-01', series_id: null },
+      { title: 'b', status: 'done', due_date: null, series_id: null },
+    ]);
+    expect(raw.prepare('SELECT COUNT(*) AS n FROM task_series').get()).toEqual({ n: 0 });
+    raw.close();
+    fs.rmSync(old, { recursive: true, force: true });
+  });
+
+  it('uses the local date for the overdue rule', () => {
+    expect(localDate(noon('2026-03-10'))).toBe('2026-03-10');
   });
 });

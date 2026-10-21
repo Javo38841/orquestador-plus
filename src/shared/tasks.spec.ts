@@ -37,7 +37,14 @@ describe('validateTaskInput', () => {
   it('trims the title and normalizes empty optional fields', () => {
     expect(validateTaskInput({ title: ' hola ', dueDate: '', newProjectName: ' api ' })).toEqual({
       ok: true,
-      value: { title: 'hola', dueDate: null, projectId: null, newProjectName: 'api', tags: [] },
+      value: {
+        title: 'hola',
+        dueDate: null,
+        projectId: null,
+        newProjectName: 'api',
+        tags: [],
+        recurrence: { kind: 'once' },
+      },
     });
   });
 });

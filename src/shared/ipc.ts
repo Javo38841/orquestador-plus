@@ -18,6 +18,7 @@ export const IpcChannel = {
   setTaskStatus: 'tasks:set-status',
   setTaskForToday: 'tasks:set-for-today',
   deleteTask: 'tasks:delete',
+  deleteSeries: 'series:delete',
   listTags: 'tags:list',
   listProjects: 'projects:list',
   createProject: 'projects:create',
@@ -48,6 +49,8 @@ export interface OrquestadorApi {
   setTaskStatus(id: number, status: TaskStatus): Promise<TaskResult>;
   setTaskForToday(id: number, forToday: boolean): Promise<TaskResult>;
   deleteTask(id: number): Promise<boolean>;
+  /** Deletes a recurring series and its open instance; completed instances stay. */
+  deleteSeries(id: number): Promise<boolean>;
   /** Tags used by at least one task, for suggestions and the filter. */
   listTags(): Promise<string[]>;
   listProjects(): Promise<Project[]>;

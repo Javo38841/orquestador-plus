@@ -1,5 +1,12 @@
 /** Tasks and projects (RF-02). Shared so main and renderer validate alike. */
 
+import {
+  isSeriesRule,
+  validateRecurrence,
+  type RecurrenceError,
+  type RecurrenceRule,
+} from './recurrence';
+
 export const TASK_TITLE_MAX_LENGTH = 200;
 export const PROJECT_NAME_MAX_LENGTH = 60;
 export const TAG_MAX_LENGTH = 30;
@@ -34,6 +41,10 @@ export interface Task {
   createdAt: string;
   /** ISO-8601 UTC timestamp of when it was moved to done; null while not done. */
   completedAt: string | null;
+  /** Series (RF-06) this task is an instance of, or null. */
+  seriesId: number | null;
+  /** Repetition rule of the series; `{ kind: 'once' }` when the task is not in a series. */
+  recurrence: RecurrenceRule;
 }
 
 /** Fields the form sends. A new project is created by name together with the task. */
@@ -44,12 +55,20 @@ export interface TaskInput {
   newProjectName?: string | null;
   /** Raw tags as typed; main normalizes them. Omitted means no tags. */
   tags?: string[];
+  /** Repetition rule. Omitted or `once` means a plain task. */
+  recurrence?: RecurrenceRule | null;
 }
 
 export type TagError = 'tag_empty' | 'tag_too_long' | 'tag_spaces';
 
 export type TaskError =
-  'empty' | 'too_long' | 'invalid_date' | 'invalid_project' | 'not_found' | TagError;
+  | 'empty'
+  | 'too_long'
+  | 'invalid_date'
+  | 'invalid_project'
+  | 'not_found'
+  | TagError
+  | RecurrenceError;
 
 export type TaskResult = { ok: true; task: Task } | { ok: false; error: TaskError };
 export type ProjectResult = { ok: true; project: Project } | { ok: false; error: TaskError };
@@ -60,6 +79,7 @@ export interface ValidTaskInput {
   projectId: number | null;
   newProjectName: string | null;
   tags: string[];
+  recurrence: RecurrenceRule;
 }
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -158,7 +178,23 @@ export function validateTaskInput(
   if (!tags.ok)
     return { ok: false, error: tags.error === 'invalid_tags' ? 'tag_empty' : tags.error };
 
-  return { ok: true, value: { title, dueDate, projectId, newProjectName, tags: tags.tags } };
+  const recurrence = validateRecurrence(raw['recurrence']);
+  if (!recurrence.ok) return recurrence;
+  if (isSeriesRule(recurrence.rule) && dueDate === null) {
+    return { ok: false, error: 'recurrence_due_required' };
+  }
+
+  return {
+    ok: true,
+    value: {
+      title,
+      dueDate,
+      projectId,
+      newProjectName,
+      tags: tags.tags,
+      recurrence: recurrence.rule,
+    },
+  };
 }
 
 /** Today as a local `YYYY-MM-DD` date. */

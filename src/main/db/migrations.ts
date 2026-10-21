@@ -106,6 +106,20 @@ export const migrations: Migration[] = [
       DROP TABLE task_tags_backup;
     `,
   },
+  {
+    version: 7,
+    name: 'task_series',
+    // Existing tasks get a NULL series_id: they stay plain tasks. The rule is an RRULE subset.
+    up: `
+      CREATE TABLE task_series (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        rrule      TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      ) STRICT;
+      ALTER TABLE tasks ADD COLUMN series_id INTEGER REFERENCES task_series (id) ON DELETE SET NULL;
+      CREATE INDEX idx_tasks_series ON tasks (series_id);
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {
