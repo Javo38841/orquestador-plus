@@ -1,0 +1,150 @@
+name: Agent · reviewer
+
+# Runs after CI finishes on a PR to develop. A failed CI goes back to the dev agent;
+# a green CI gets a read-only review that approves and merges, or requests changes.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+concurrency:
+  group: agent-review-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  OWNER: Javo38841
+  DEV_BOT: orquestador-dev-javo[bot]
+
+jobs:
+  review:
+    name: Review PR
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.REVIEW_APP_CLIENT_ID }}
+          private-key: ${{ secrets.REVIEW_APP_PRIVATE_KEY }}
+
+      - name: Find the PR for this CI run
+        id: pr
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          pr=$(gh pr list --state open --head "$HEAD_BRANCH" --json number,headRefOid,author,baseRefName \
+            --jq "[.[] | select(.headRefOid == \"$HEAD_SHA\")][0]")
+          if [ -z "$pr" ] || [ "$pr" = "null" ]; then
+            echo "No open PR at $HEAD_SHA (outdated run). Skipping."; echo "action=skip" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          number=$(jq -r .number <<<"$pr"); base=$(jq -r .baseRefName <<<"$pr"); author=$(jq -r .author.login <<<"$pr")
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+          echo "PR #$number by $author -> $base, CI: $CONCLUSION"
+
+          # Bot logins come back as "app/<slug>" from gh.
+          case "$author" in
+            "$OWNER") who=owner ;;
+            app/orquestador-dev-javo|"$DEV_BOT") who=dev ;;
+            *) who=other ;;
+          esac
+
+          if [ "$base" != "develop" ] || [ "$who" = "other" ] || [ "$CONCLUSION" = "cancelled" ] || [ "$CONCLUSION" = "skipped" ]; then
+            echo "action=skip" >> "$GITHUB_OUTPUT"
+          elif [ "$CONCLUSION" != "success" ]; then
+            [ "$who" = "dev" ] && echo "action=ci-failed" >> "$GITHUB_OUTPUT" || echo "action=skip" >> "$GITHUB_OUTPUT"
+          elif [ "$who" = "dev" ] && gh pr diff "$number" --name-only | grep -qE '^\.(github|claude)/'; then
+            echo "action=protected" >> "$GITHUB_OUTPUT"
+          else
+            echo "action=review" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Send a failed CI back to the dev agent
+        if: steps.pr.outputs.action == 'ci-failed'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          gh pr review "${{ steps.pr.outputs.number }}" --request-changes \
+            --body "El CI falló: $RUN_URL. Revisa los logs con \`gh run view --log-failed\` y corrígelo antes de la revisión."
+
+      - name: Agent changes to .github or .claude need the owner
+        if: steps.pr.outputs.action == 'protected'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh pr edit "${{ steps.pr.outputs.number }}" --add-label necesita-humano
+          gh pr comment "${{ steps.pr.outputs.number }}" --body "Este PR toca \`.github/\` o \`.claude/\`: no se aprueba automáticamente."
+
+      - uses: actions/checkout@v5
+        if: steps.pr.outputs.action == 'review'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Fetch develop for the diff
+        if: steps.pr.outputs.action == 'review'
+        run: git fetch origin develop
+
+      - name: Run the reviewer agent
+        if: steps.pr.outputs.action == 'review'
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.app.outputs.token }}
+          allowed_bots: orquestador-dev-javo
+          prompt: |
+            You are the reviewer agent of ${{ github.repository }}.
+            Review PR #${{ steps.pr.outputs.number }} following .claude/agents/reviewer.md
+            and CLAUDE.md. The PR head is checked out; compare with origin/develop.
+            Do not edit any repository file. When done, write ONLY the file
+            .review/verdict.json with this shape:
+            {"decision": "approve" | "request_changes", "body": "<review in Spanish, markdown>"}
+          claude_args: >-
+            --max-turns 120
+            --allowedTools "Read,Glob,Grep,Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh issue view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(grep:*),Bash(ls:*),Bash(mkdir -p .review)"
+
+      - name: Submit the verdict
+        if: steps.pr.outputs.action == 'review'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          if [ ! -f .review/verdict.json ]; then
+            echo "::error::The reviewer did not write .review/verdict.json"; exit 1
+          fi
+          decision=$(jq -r .decision .review/verdict.json)
+          jq -r .body .review/verdict.json > "$RUNNER_TEMP/review.md"
+          case "$decision" in
+            approve)
+              gh pr review "$PR" --approve --body-file "$RUNNER_TEMP/review.md"
+              gh pr merge "$PR" --squash || gh pr merge "$PR" --squash --auto
+              ;;
+            request_changes)
+              gh pr review "$PR" --request-changes --body-file "$RUNNER_TEMP/review.md"
+              ;;
+            *)
+              echo "::error::Unknown decision '$decision'"; exit 1 ;;
+          esac
+
+      - name: Hand over to the owner on failure
+        if: failure() && steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh pr edit "${{ steps.pr.outputs.number }}" --add-label necesita-humano
+          gh pr comment "${{ steps.pr.outputs.number }}" --body "El agente reviewer falló: $RUN_URL"

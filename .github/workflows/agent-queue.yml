@@ -1,0 +1,65 @@
+name: Agent · queue
+
+# Feeds the dev agent one story at a time: when nothing is in progress, the oldest
+# open issue labeled `en-cola` gets `agente`. See ADR-004.
+on:
+  pull_request:
+    types: [closed]
+    branches: [develop]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+
+concurrency:
+  group: agent-queue
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  next:
+    name: Start the next story
+    runs-on: ubuntu-latest
+    steps:
+      # The review app labels the issue so the dev workflow is triggered
+      # (events created with GITHUB_TOKEN do not trigger workflows).
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.REVIEW_APP_CLIENT_ID }}
+          private-key: ${{ secrets.REVIEW_APP_PRIVATE_KEY }}
+
+      - name: Mark the merged story as in develop
+        if: github.event_name == 'pull_request' && github.event.pull_request.merged
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          BODY: ${{ github.event.pull_request.body }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          issue=$(grep -oE 'Refs #[0-9]+' <<<"$BODY" | head -1 | tr -dc '0-9' || true)
+          if [ -n "$issue" ]; then
+            gh issue edit "$issue" --remove-label en-progreso --add-label en-develop
+            gh issue comment "$issue" --body "Mergeado en develop con #$PR. Pruébalo en la build Dev (release dev-latest) y cierra la historia si la aceptas."
+          fi
+
+      - name: Start the next story
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          count() { gh issue list --state open --label "$1" --json number --jq length; }
+          if [ "$(count agente)" -gt 0 ] || [ "$(count en-progreso)" -gt 0 ]; then
+            echo "A story is already in progress."; exit 0
+          fi
+          if [ "$(count necesita-humano)" -gt 0 ] || \
+             [ "$(gh pr list --state open --label necesita-humano --json number --jq length)" -gt 0 ]; then
+            echo "Queue paused: something needs the owner (label necesita-humano)."; exit 0
+          fi
+          next=$(gh issue list --state open --label en-cola --json number --jq 'sort_by(.number) | .[0].number // empty')
+          if [ -z "$next" ]; then
+            echo "Queue is empty."; exit 0
+          fi
+          gh issue edit "$next" --remove-label en-cola --add-label agente
+          echo "Started story #$next"

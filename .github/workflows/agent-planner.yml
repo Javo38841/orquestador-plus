@@ -1,0 +1,42 @@
+name: Agent · planner
+
+# Turns an issue labeled `idea` (by the owner) into a story with CP criteria,
+# labeled `por-aprobar`. The owner approves by adding `en-cola` or `agente`.
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Write the story
+    if: github.event.label.name == 'idea' && github.actor == 'Javo38841'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.DEV_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DEV_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v5
+        with:
+          ref: develop
+
+      - name: Run the planner agent
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.app.outputs.token }}
+          prompt: |
+            You are the planner agent of ${{ github.repository }}.
+            Turn issue #${{ github.event.issue.number }} into a story following
+            .claude/agents/planner.md. Do not write code or open PRs.
+          claude_args: >-
+            --max-turns 60
+            --allowedTools "Read,Glob,Grep,Write,Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(mkdir -p .plan)"
