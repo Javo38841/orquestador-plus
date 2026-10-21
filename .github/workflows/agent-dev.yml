@@ -1,0 +1,188 @@
+name: Agent · dev
+
+# Implements a story when the `agente` label is added (by the owner or the queue),
+# and fixes its PR when the reviewer requests changes. See ADR-004.
+on:
+  issues:
+    types: [labeled]
+  pull_request_review:
+    types: [submitted]
+
+# One dev run at a time: stories touch the same files.
+concurrency:
+  group: agent-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  OWNER: Javo38841
+  DEV_BOT: orquestador-dev-javo[bot]
+  DEV_BOT_ID: '345623557'
+  REVIEW_BOT: orquestador-review-javo[bot]
+  MAX_REVIEW_ROUNDS: '3'
+
+jobs:
+  story:
+    name: Implement story
+    if: >-
+      github.event_name == 'issues' &&
+      github.event.label.name == 'agente' &&
+      (github.actor == 'Javo38841' || github.actor == 'orquestador-review-javo[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.DEV_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DEV_APP_PRIVATE_KEY }}
+
+      - name: Mark the story in progress
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh issue edit "$ISSUE" --remove-label agente --add-label en-progreso
+
+      - uses: actions/checkout@v5
+        with:
+          ref: develop
+          token: ${{ steps.app.outputs.token }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Git identity of the dev bot
+        run: |
+          git config user.name "$DEV_BOT"
+          git config user.email "${DEV_BOT_ID}+${DEV_BOT}@users.noreply.github.com"
+
+      - name: Run the dev agent
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.app.outputs.token }}
+          bot_name: orquestador-dev-javo[bot]
+          bot_id: '345623557'
+          allowed_bots: orquestador-review-javo
+          prompt: |
+            You are the dev agent of ${{ github.repository }}.
+            Implement the story in issue #${{ github.event.issue.number }} following the
+            "New story" process in .claude/agents/dev.md and the rules in CLAUDE.md.
+            You are on an up-to-date checkout of develop with dependencies installed.
+            Finish by pushing your branch and opening a PR to develop whose body ends
+            with "Refs #${{ github.event.issue.number }}".
+          claude_args: >-
+            --max-turns 250
+            --allowedTools "Bash,Read,Write,Edit,MultiEdit,Glob,Grep,TodoWrite"
+
+      - name: Check that a PR was opened
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          pr=$(gh pr list --state open --base develop --author "app/orquestador-dev-javo" \
+            --json number,body --jq "[.[] | select(.body | test(\"Refs #${ISSUE}\\\\b\"))][0].number // empty")
+          if [ -z "$pr" ]; then
+            echo "::error::The dev agent finished without opening a PR for #${ISSUE}."
+            exit 1
+          fi
+          echo "PR #$pr opened for #$ISSUE"
+
+      - name: Hand over to the owner on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue edit "$ISSUE" --remove-label en-progreso --add-label necesita-humano
+          gh issue comment "$ISSUE" --body "El agente dev no pudo terminar esta historia. Revisa la ejecución: $RUN_URL"
+
+  fix:
+    name: Fix after review
+    if: >-
+      github.event_name == 'pull_request_review' &&
+      github.event.review.state == 'changes_requested' &&
+      github.event.review.user.login == 'orquestador-review-javo[bot]' &&
+      github.event.pull_request.user.login == 'orquestador-dev-javo[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.DEV_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DEV_APP_PRIVATE_KEY }}
+
+      - name: Stop after too many review rounds
+        id: rounds
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          rounds=$(gh api "repos/$GH_REPO/pulls/$PR/reviews" \
+            --jq "[.[] | select(.user.login == \"$REVIEW_BOT\" and .state == \"CHANGES_REQUESTED\")] | length")
+          echo "Review rounds with changes requested: $rounds"
+          if [ "$rounds" -ge "$MAX_REVIEW_ROUNDS" ]; then
+            gh pr edit "$PR" --add-label necesita-humano
+            gh pr comment "$PR" --body "Se alcanzó el máximo de rondas de revisión ($MAX_REVIEW_ROUNDS). Queda para revisión humana."
+            echo "stop=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.rounds.outputs.stop != 'true'
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ steps.app.outputs.token }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        if: steps.rounds.outputs.stop != 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.rounds.outputs.stop != 'true'
+        run: npm ci
+
+      - name: Git identity of the dev bot
+        if: steps.rounds.outputs.stop != 'true'
+        run: |
+          git config user.name "$DEV_BOT"
+          git config user.email "${DEV_BOT_ID}+${DEV_BOT}@users.noreply.github.com"
+
+      - name: Run the dev agent (fix)
+        if: steps.rounds.outputs.stop != 'true'
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.app.outputs.token }}
+          bot_name: orquestador-dev-javo[bot]
+          bot_id: '345623557'
+          allowed_bots: orquestador-review-javo
+          prompt: |
+            You are the dev agent of ${{ github.repository }}.
+            The reviewer requested changes on PR #${{ github.event.pull_request.number }}.
+            Follow "Fixing a PR after review" in .claude/agents/dev.md and the rules in
+            CLAUDE.md. You are on the PR branch with dependencies installed. Push your
+            fixes to this same branch.
+          claude_args: >-
+            --max-turns 200
+            --allowedTools "Bash,Read,Write,Edit,MultiEdit,Glob,Grep,TodoWrite"
