@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3';
 import { IpcChannel, type AppInfo } from '../../shared/ipc';
 import { CHANNEL } from '../channel';
 import { createBug, deleteBug, listBugs, setBugStatus, updateBug } from '../bugs/bugs';
+import { listJournal, saveJournalEntry } from '../journal/journal';
 import { captureItem, convertToTask, discardItem, listInbox } from '../inbox/inbox';
 import {
   createProject,
@@ -100,4 +101,9 @@ export function registerIpcHandlers(db: Database.Database | null, wikiDir: strin
     withDb((d) => setBugStatus(d, id, status)),
   );
   ipcMain.handle(IpcChannel.deleteBug, (_event, id: unknown) => withDb((d) => deleteBug(d, id)));
+
+  ipcMain.handle(IpcChannel.listJournal, () => withDb(listJournal));
+  ipcMain.handle(IpcChannel.saveJournalEntry, (_event, date: unknown, text: unknown) =>
+    withDb((d) => saveJournalEntry(d, date, text)),
+  );
 }

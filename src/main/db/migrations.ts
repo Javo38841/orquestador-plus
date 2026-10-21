@@ -166,6 +166,19 @@ export const migrations: Migration[] = [
       CREATE INDEX idx_bugs_status ON bugs (status);
     `,
   },
+  {
+    version: 10,
+    name: 'journal',
+    // The date is the key: one entry per local calendar day.
+    up: `
+      CREATE TABLE journal_entries (
+        date       TEXT PRIMARY KEY CHECK (date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+        text       TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {

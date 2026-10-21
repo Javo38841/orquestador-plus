@@ -28,6 +28,8 @@ const api: OrquestadorApi = {
   updateBug: (id, input) => ipcRenderer.invoke(IpcChannel.updateBug, id, input),
   setBugStatus: (id, status) => ipcRenderer.invoke(IpcChannel.setBugStatus, id, status),
   deleteBug: (id) => ipcRenderer.invoke(IpcChannel.deleteBug, id),
+  listJournal: () => ipcRenderer.invoke(IpcChannel.listJournal),
+  saveJournalEntry: (date, text) => ipcRenderer.invoke(IpcChannel.saveJournalEntry, date, text),
 };
 
 contextBridge.exposeInMainWorld('orquestador', api);
