@@ -50,10 +50,12 @@ test('ADR-003: the renderer has no access to Node', async () => {
     process: 'undefined',
     api: [
       'captureInbox',
+      'convertInboxItem',
       'createProject',
       'createTask',
       'deleteProject',
       'deleteTask',
+      'discardInboxItem',
       'getAppInfo',
       'listInbox',
       'listProjects',

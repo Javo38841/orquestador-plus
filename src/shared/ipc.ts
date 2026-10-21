@@ -10,6 +10,8 @@ export const IpcChannel = {
   getAppInfo: 'app:get-info',
   captureInbox: 'inbox:capture',
   listInbox: 'inbox:list',
+  convertInboxItem: 'inbox:convert',
+  discardInboxItem: 'inbox:discard',
   listTasks: 'tasks:list',
   createTask: 'tasks:create',
   updateTask: 'tasks:update',
@@ -36,6 +38,9 @@ export interface OrquestadorApi {
   getAppInfo(): Promise<AppInfo>;
   captureInbox(text: string): Promise<CaptureResult>;
   listInbox(): Promise<InboxItem[]>;
+  /** Creates a task from the item and removes the item from the inbox, atomically. */
+  convertInboxItem(id: number, input: TaskInput): Promise<TaskResult>;
+  discardInboxItem(id: number): Promise<boolean>;
   listTasks(): Promise<Task[]>;
   createTask(input: TaskInput): Promise<TaskResult>;
   updateTask(id: number, input: TaskInput): Promise<TaskResult>;

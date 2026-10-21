@@ -2,7 +2,7 @@ import { app, ipcMain } from 'electron';
 import type Database from 'better-sqlite3';
 import { IpcChannel, type AppInfo } from '../../shared/ipc';
 import { CHANNEL } from '../channel';
-import { captureItem, listInbox } from '../inbox/inbox';
+import { captureItem, convertToTask, discardItem, listInbox } from '../inbox/inbox';
 import {
   createProject,
   createTask,
@@ -37,6 +37,12 @@ export function registerIpcHandlers(db: Database.Database | null): void {
     if (!db) throw new Error('Database not available');
     return run(db);
   };
+  ipcMain.handle(IpcChannel.convertInboxItem, (_event, id: unknown, input: unknown) =>
+    withDb((d) => convertToTask(d, id, input)),
+  );
+  ipcMain.handle(IpcChannel.discardInboxItem, (_event, id: unknown) =>
+    withDb((d) => discardItem(d, id)),
+  );
   ipcMain.handle(IpcChannel.listTasks, () => withDb(listTasks));
   ipcMain.handle(IpcChannel.createTask, (_event, input: unknown) =>
     withDb((d) => createTask(d, input)),

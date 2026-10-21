@@ -4,7 +4,8 @@ import path from 'node:path';
 import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDatabase } from '../db/database';
-import { captureItem, listInbox } from './inbox';
+import { listTasks } from '../tasks/tasks';
+import { captureItem, convertToTask, discardItem, listInbox } from './inbox';
 
 describe('inbox', () => {
   let dir: string;
@@ -64,5 +65,71 @@ describe('inbox', () => {
     db = openDatabase(dir);
 
     expect(listInbox(db).map((i) => i.title)).toEqual(['persisted']);
+  });
+
+  describe('classify', () => {
+    it('CP-01-09: converting with the captured title keeps that title', () => {
+      captureItem(db, 'Revisar logs');
+      const result = convertToTask(db, 1, {
+        title: 'Revisar logs',
+        dueDate: null,
+        projectId: null,
+      });
+      expect(result.ok && result.task.title).toBe('Revisar logs');
+      expect(listInbox(db)).toEqual([]);
+      expect(listTasks(db).map((t) => t.title)).toEqual(['Revisar logs']);
+    });
+
+    it('CP-01-08: converting assigns project and due date and removes the item', () => {
+      captureItem(db, 'Arreglar sensor');
+      const result = convertToTask(db, 1, {
+        title: 'Arreglar sensor',
+        dueDate: '2026-04-01',
+        projectId: null,
+        newProjectName: 'cabina',
+      });
+      expect(result.ok && result.task.projectName).toBe('cabina');
+      expect(result.ok && result.task.dueDate).toBe('2026-04-01');
+      expect(listInbox(db)).toEqual([]);
+    });
+
+    it('CP-01-10: discarding removes the item from the inbox', () => {
+      captureItem(db, 'Ruido');
+      expect(discardItem(db, 1)).toBe(true);
+      expect(listInbox(db)).toEqual([]);
+      expect(discardItem(db, 1)).toBe(false);
+    });
+
+    it('CP-01-11: leaving an item for later changes nothing (no call is made)', () => {
+      captureItem(db, 'Luego');
+      const before = listInbox(db);
+      expect(listInbox(db)).toEqual(before);
+      expect(listTasks(db)).toEqual([]);
+    });
+
+    it('CP-01-12: if creating the task fails the item stays in the inbox', () => {
+      captureItem(db, 'No se pierde');
+      db.exec(
+        "CREATE TRIGGER fail_task BEFORE INSERT ON tasks BEGIN SELECT RAISE(ABORT, 'boom'); END",
+      );
+      expect(() =>
+        convertToTask(db, 1, {
+          title: 'No se pierde',
+          dueDate: null,
+          projectId: null,
+          newProjectName: 'nuevo',
+        }),
+      ).toThrow();
+      expect(listInbox(db)).toHaveLength(1);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM projects').get()).toEqual({ n: 0 });
+    });
+
+    it('rejects an invalid payload or unknown item without touching the inbox', () => {
+      captureItem(db, 'Algo');
+      expect(convertToTask(db, 1, { title: '  ' })).toEqual({ ok: false, error: 'empty' });
+      expect(convertToTask(db, 99, { title: 'x' })).toEqual({ ok: false, error: 'not_found' });
+      expect(convertToTask(db, 'a', { title: 'x' })).toEqual({ ok: false, error: 'not_found' });
+      expect(listInbox(db)).toHaveLength(1);
+    });
   });
 });

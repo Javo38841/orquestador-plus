@@ -49,6 +49,27 @@
     "empty": "La bandeja está vacía.",
     "source": {
       "quick_capture": "Captura rápida"
+    },
+    "classify": {
+      "title": "Clasificar",
+      "type": "Tipo",
+      "task": "Tarea",
+      "bug": "Bug",
+      "note": "Nota",
+      "soon": "Disponible pronto",
+      "itemTitle": "Título",
+      "due": "Fecha límite",
+      "project": "Proyecto",
+      "noProject": "Sin proyecto (suelta)",
+      "newProject": "Crear proyecto nuevo…",
+      "newProjectName": "Nombre del proyecto",
+      "convert": "Convertir",
+      "discard": "Descartar",
+      "later": "Dejar para después",
+      "confirmDiscard": "¿Descartar este elemento?",
+      "confirmYes": "Sí, descartar",
+      "confirmNo": "No",
+      "failed": "No se pudo clasificar el elemento"
     }
   },
   "today": {

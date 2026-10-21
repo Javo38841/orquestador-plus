@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3';
+import { createTask } from '../tasks/tasks';
+import type { TaskResult } from '../../shared/tasks';
 import { validateCapture, type CaptureResult, type InboxItem } from '../../shared/inbox';
 
 interface InboxRow {
@@ -45,4 +47,30 @@ export function listInbox(db: Database.Database): InboxItem[] {
     )
     .all() as InboxRow[];
   return rows.map(toItem);
+}
+
+/**
+ * Turns an inbox item into a task: the task is created and the item removed in one
+ * transaction, so a failure leaves the item in the inbox (RNF-08).
+ */
+export function convertToTask(
+  db: Database.Database,
+  id: unknown,
+  input: unknown,
+  now: Date = new Date(),
+): TaskResult {
+  if (typeof id !== 'number' || !Number.isInteger(id)) return { ok: false, error: 'not_found' };
+  return db.transaction((): TaskResult => {
+    const exists = db.prepare('SELECT 1 FROM inbox_items WHERE id = ?').get(id);
+    if (!exists) return { ok: false, error: 'not_found' };
+    const result = createTask(db, input, now);
+    if (result.ok) db.prepare('DELETE FROM inbox_items WHERE id = ?').run(id);
+    return result;
+  })();
+}
+
+/** Removes an item from the inbox. Returns whether it existed. */
+export function discardItem(db: Database.Database, id: unknown): boolean {
+  if (typeof id !== 'number' || !Number.isInteger(id)) return false;
+  return db.prepare('DELETE FROM inbox_items WHERE id = ?').run(id).changes > 0;
 }
