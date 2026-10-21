@@ -23,7 +23,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(github.base_ref == 'main' && '[{"os":"ubuntu-latest","label":"Linux"},{"os":"windows-latest","label":"Windows"}]' || '[{"os":"ubuntu-latest","label":"Linux"}]') }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: No real .env files in git
         shell: bash
@@ -33,7 +33,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -73,7 +73,7 @@ jobs:
 
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.label }}
           path: playwright-report/

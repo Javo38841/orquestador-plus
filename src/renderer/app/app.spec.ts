@@ -1,3 +1,4 @@
+import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { TranslocoTestingModule } from '@jsverse/transloco';
@@ -18,6 +19,8 @@ function fakeApi(overrides: Partial<AppInfo> = {}): OrquestadorApi {
       databaseReady: true,
       ...overrides,
     }),
+    listInbox: async () => [],
+    captureInbox: async () => ({ ok: false, error: 'empty' }),
   };
 }
 
@@ -71,5 +74,17 @@ describe('App', () => {
     expect(el.querySelector('[data-testid="database-status"]')?.textContent).toContain(
       'Base de datos no disponible',
     );
+  });
+
+  it('CP-01-01: Ctrl+Space opens the quick capture panel', async () => {
+    const el = await render(fakeApi());
+    expect(el.querySelector('app-capture-panel')).toBeNull();
+
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: ' ', code: 'Space', ctrlKey: true }),
+    );
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(el.querySelector('app-capture-panel')).not.toBeNull();
   });
 });

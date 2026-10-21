@@ -38,9 +38,17 @@
                 <a
                   [routerLink]="item.path"
                   routerLinkActive="bg-surface-raised text-ink"
-                  class="block rounded-md px-2 py-1.5 text-sm text-ink/80 hover:bg-surface"
-                  >{{ item.labelKey | transloco }}</a
+                  class="flex items-center justify-between rounded-md px-2 py-1.5 text-sm text-ink/80 hover:bg-surface"
                 >
+                  {{ item.labelKey | transloco }}
+                  @if (item.path === 'inbox' && inbox.count() > 0) {
+                    <span
+                      class="rounded-full bg-accent px-2 text-xs font-semibold text-accent-ink"
+                      data-testid="inbox-count"
+                      >{{ inbox.count() }}</span
+                    >
+                  }
+                </a>
               </li>
             }
           </ul>
@@ -65,3 +73,7 @@
     </main>
   </div>
 </div>
+
+@if (captureOpen()) {
+  <app-capture-panel (closed)="captureOpen.set(false)" />
+}
