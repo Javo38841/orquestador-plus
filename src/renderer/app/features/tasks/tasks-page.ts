@@ -205,6 +205,18 @@ const EMPTY_DRAFT: Draft = { title: '', dueDate: '', project: '', newProjectName
                   {{ 'tasks.confirmNo' | transloco }}
                 </button>
               } @else {
+                @if (task.status === 'todo') {
+                  <button
+                    type="button"
+                    class="rounded-md border px-2 py-1"
+                    data-testid="task-today"
+                    [class]="task.forToday ? 'border-accent text-accent' : 'border-line'"
+                    [attr.aria-pressed]="task.forToday"
+                    (click)="store.setForToday(task, !task.forToday)"
+                  >
+                    {{ 'tasks.forToday' | transloco }}
+                  </button>
+                }
                 <button
                   type="button"
                   class="rounded-md border border-line px-2 py-1"

@@ -13,6 +13,7 @@ const task = (id: number, extra: Partial<Task> = {}): Task => ({
   dueDate: null,
   projectId: null,
   projectName: null,
+  forToday: false,
   createdAt: '2026-03-01T10:00:00.000Z',
   ...extra,
 });

@@ -55,6 +55,13 @@ export const migrations: Migration[] = [
       CREATE INDEX idx_tasks_project ON tasks (project_id);
     `,
   },
+  {
+    version: 4,
+    name: 'tasks_for_today',
+    up: `
+      ALTER TABLE tasks ADD COLUMN for_today INTEGER NOT NULL DEFAULT 0 CHECK (for_today IN (0, 1));
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {

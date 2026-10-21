@@ -20,6 +20,8 @@ export interface Task {
   /** Null means "Suelta" (no project). */
   projectId: number | null;
   projectName: string | null;
+  /** Marked by the user to be done today (shows in Hoy even without a due date). */
+  forToday: boolean;
   /** ISO-8601 UTC timestamp. */
   createdAt: string;
 }

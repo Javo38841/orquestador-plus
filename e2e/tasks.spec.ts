@@ -54,3 +54,21 @@ test('CP-02-04: completing a task removes it from pending and un-completing brin
   await page.getByTestId('show-completed').uncheck();
   await expect(page.getByTestId('task-row').filter({ hasText: 'Pagar la luz' })).toBeVisible();
 });
+
+test('CP-03-07: completing a task from Hoy removes it and lowers the count', async () => {
+  const { page } = launched;
+  await page.getByTestId('new-task').click();
+  await page.getByTestId('task-title').fill('Preparar demo');
+  await page.getByTestId('task-save').click();
+  const row = page.getByTestId('task-row').filter({ hasText: 'Preparar demo' });
+  await row.getByTestId('task-today').click();
+
+  await page.getByRole('link', { name: 'Hoy' }).click();
+  const item = page.getByTestId('today-task').filter({ hasText: 'Preparar demo' });
+  await expect(item).toBeVisible();
+  await expect(page.getByTestId('today-subtitle')).toContainText('1 pendiente');
+
+  await item.getByTestId('today-check').check();
+  await expect(item).toHaveCount(0);
+  await expect(page.getByTestId('today-subtitle')).toContainText('0 pendientes');
+});

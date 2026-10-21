@@ -11,6 +11,7 @@ import {
   deleteTask,
   listProjects,
   listTasks,
+  setTaskForToday,
   setTaskStatus,
   updateTask,
 } from './tasks';
@@ -43,6 +44,7 @@ describe('tasks', () => {
       projectId: null,
       projectName: null,
       dueDate: null,
+      forToday: false,
     });
     expect(listTasks(db)).toHaveLength(1);
   });
@@ -136,5 +138,22 @@ describe('tasks', () => {
     setTaskStatus(db, done.id, 'done');
 
     expect(listTasks(db).map((t) => t.title)).toEqual(['sooner', 'later', 'undated', 'done']);
+  });
+
+  it('CP-03-08: marking and unmarking "para hoy" persists', () => {
+    const task = make('Revisar PR');
+    const marked = setTaskForToday(db, task.id, true);
+    expect(marked.ok && marked.task.forToday).toBe(true);
+    expect(listTasks(db)[0].forToday).toBe(true);
+
+    const unmarked = setTaskForToday(db, task.id, false);
+    expect(unmarked.ok && unmarked.task.forToday).toBe(false);
+    expect(listTasks(db)[0].forToday).toBe(false);
+  });
+
+  it('rejects "para hoy" for unknown tasks and non-boolean values', () => {
+    const task = make('x');
+    expect(setTaskForToday(db, 999, true)).toEqual({ ok: false, error: 'not_found' });
+    expect(setTaskForToday(db, task.id, 'yes')).toEqual({ ok: false, error: 'not_found' });
   });
 });

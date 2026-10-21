@@ -11,6 +11,7 @@ const task = (id: number, status: Task['status'] = 'todo', title = `t${id}`): Ta
   dueDate: null,
   projectId: null,
   projectName: null,
+  forToday: false,
   createdAt: '2026-03-01T10:00:00.000Z',
 });
 
@@ -29,6 +30,10 @@ function setup(stored: Task[]) {
     setTaskStatus: vi.fn(async (id, status): Promise<TaskResult> => ({
       ok: true,
       task: task(id, status),
+    })),
+    setTaskForToday: vi.fn(async (id, forToday): Promise<TaskResult> => ({
+      ok: true,
+      task: { ...task(id), forToday },
     })),
     deleteTask: vi.fn(async () => true),
   } as unknown as OrquestadorApi;
@@ -81,5 +86,17 @@ describe('TasksStore', () => {
     await store.load();
     await store.remove(store.tasks()[0]);
     expect(store.tasks().map((t) => t.id)).toEqual([2]);
+  });
+
+  it('CP-03-08: marking and unmarking "para hoy" updates the task in the list', async () => {
+    const { store, api } = setup([task(1)]);
+    await store.load();
+
+    await store.setForToday(store.tasks()[0], true);
+    expect(api.setTaskForToday).toHaveBeenCalledWith(1, true);
+    expect(store.tasks()[0].forToday).toBe(true);
+
+    await store.setForToday(store.tasks()[0], false);
+    expect(store.tasks()[0].forToday).toBe(false);
   });
 });
