@@ -33,6 +33,7 @@ export const NAVIGATION: NavGroup[] = [
       { path: 'snippets', labelKey: 'nav.snippets' },
       { path: 'learning', labelKey: 'nav.learning' },
       { path: 'portal', labelKey: 'nav.portal' },
+      { path: 'settings', labelKey: 'nav.settings' },
     ],
   },
 ];

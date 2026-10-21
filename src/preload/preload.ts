@@ -48,6 +48,7 @@ const api: OrquestadorApi = {
   revokePortalLink: (id) => ipcRenderer.invoke(IpcChannel.revokePortalLink, id),
   getRemindersEnabled: () => ipcRenderer.invoke(IpcChannel.getRemindersEnabled),
   setRemindersEnabled: (enabled) => ipcRenderer.invoke(IpcChannel.setRemindersEnabled, enabled),
+  exportAll: () => ipcRenderer.invoke(IpcChannel.exportAll),
 };
 
 contextBridge.exposeInMainWorld('orquestador', api);

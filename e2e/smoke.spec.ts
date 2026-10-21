@@ -67,6 +67,7 @@ test('ADR-003: the renderer has no access to Node', async () => {
       'deleteTask',
       'deleteTopic',
       'discardInboxItem',
+      'exportAll',
       'getAppInfo',
       'getNote',
       'getPortalStatus',

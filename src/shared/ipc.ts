@@ -4,6 +4,7 @@ import type { Snippet, SnippetInput, SnippetResult } from './snippets';
 import type { JournalEntry, JournalResult } from './journal';
 import type { CaptureResult, InboxItem } from './inbox';
 import type { PortalLinkInput, PortalLinkResult, PortalLink, PortalStatus } from './portal';
+import type { ExportResult } from './export';
 import type { SearchResult } from './search';
 import type { NoteInput, NoteResult, NoteSummary } from './wiki';
 import type { Project, ProjectResult, Task, TaskInput, TaskResult, TaskStatus } from './tasks';
@@ -60,6 +61,7 @@ export const IpcChannel = {
   revokePortalLink: 'portal:revoke-link',
   getRemindersEnabled: 'settings:get-reminders-enabled',
   setRemindersEnabled: 'settings:set-reminders-enabled',
+  exportAll: 'export:all',
 } as const;
 
 export type ReleaseChannel = 'dev' | 'prod';
@@ -142,4 +144,9 @@ export interface OrquestadorApi {
   /** Whether task reminders show a notification (RF-18). */
   getRemindersEnabled(): Promise<boolean>;
   setRemindersEnabled(enabled: boolean): Promise<boolean>;
+  /**
+   * Exports everything as a ZIP of open formats (RF-11). Main opens the save dialog; the
+   * renderer sends nothing and only gets the outcome.
+   */
+  exportAll(): Promise<ExportResult>;
 }
