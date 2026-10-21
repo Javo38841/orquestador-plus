@@ -48,6 +48,18 @@ test('ADR-003: the renderer has no access to Node', async () => {
   expect(exposed).toEqual({
     require: 'undefined',
     process: 'undefined',
-    api: ['captureInbox', 'getAppInfo', 'listInbox'],
+    api: [
+      'captureInbox',
+      'createProject',
+      'createTask',
+      'deleteProject',
+      'deleteTask',
+      'getAppInfo',
+      'listInbox',
+      'listProjects',
+      'listTasks',
+      'setTaskStatus',
+      'updateTask',
+    ],
   });
 });
