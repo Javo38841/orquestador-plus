@@ -10,6 +10,7 @@ import {
   deleteProject,
   deleteTask,
   listProjects,
+  listTags,
   listTasks,
   setTaskForToday,
   setTaskStatus,
@@ -128,6 +129,42 @@ describe('tasks', () => {
     expect(listTasks(db)).toEqual([
       expect.objectContaining({ title: 't', projectId: null, projectName: null }),
     ]);
+  });
+
+  it('CP-07-02: tags are stored normalized and not duplicated in a task', () => {
+    const task = make('Migrar DNS', { tags: ['Infra', '#infra', 'infra'] });
+    expect(task.tags).toEqual(['infra']);
+    expect(listTasks(db)[0].tags).toEqual(['infra']);
+    expect(listTags(db)).toEqual(['infra']);
+  });
+
+  it('CP-07-03: invalid tags are rejected and the task is not created', () => {
+    for (const [tags, error] of [
+      [[''], 'tag_empty'],
+      [['   '], 'tag_empty'],
+      [['a'.repeat(31)], 'tag_too_long'],
+    ] as const) {
+      expect(createTask(db, { title: 'x', tags })).toEqual({ ok: false, error });
+    }
+    expect(listTasks(db)).toHaveLength(0);
+  });
+
+  it('CP-07-05: removing a tag from one task leaves it on the others', () => {
+    const a = make('A', { tags: ['infra', 'api'] });
+    make('B', { tags: ['infra'] });
+    const updated = updateTask(db, a.id, { title: 'A', tags: ['api'] });
+    expect(updated.ok && updated.task.tags).toEqual(['api']);
+
+    const byTitle = Object.fromEntries(listTasks(db).map((t) => [t.title, t.tags]));
+    expect(byTitle).toEqual({ A: ['api'], B: ['infra'] });
+    expect(listTags(db)).toEqual(['api', 'infra']);
+  });
+
+  it('CP-07-06: listTags returns only tags still in use', () => {
+    const a = make('A', { tags: ['solo'] });
+    make('B', { tags: ['otra'] });
+    deleteTask(db, a.id);
+    expect(listTags(db)).toEqual(['otra']);
   });
 
   it('lists pending tasks first, by due date with undated last', () => {
