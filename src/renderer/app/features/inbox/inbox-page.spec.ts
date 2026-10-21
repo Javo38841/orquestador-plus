@@ -14,11 +14,11 @@ const item: InboxItem = {
   createdAt: '2026-03-01T10:00:00.000Z',
 };
 
-async function render() {
+async function render(items: InboxItem[] = [item]) {
   const convertInboxItem = vi.fn(async (): Promise<TaskResult> => ({ ok: true, task: {} as Task }));
   const discardInboxItem = vi.fn(async () => true);
   const api = {
-    listInbox: async () => [item],
+    listInbox: async () => items,
     listTasks: async () => [],
     listTags: async () => ['infra'],
     listProjects: async () => [{ id: 3, name: 'cabina' }],
@@ -51,6 +51,34 @@ async function render() {
 }
 
 describe('InboxPage classify panel', () => {
+  it('CP-15-08: a portal item shows the "Portal" label and the reporter, and can be classified', async () => {
+    const portalItem: InboxItem = {
+      id: 2,
+      title: 'Pantalla blanca',
+      source: 'portal',
+      reporter: 'Ana',
+      createdAt: '2026-03-01T10:00:00.000Z',
+    };
+    const { q, settle, convertInboxItem } = await render([portalItem]);
+    const row = q('inbox-item')!;
+    expect(row.textContent).toContain('Portal');
+    expect(q('inbox-reporter')!.textContent).toContain('Ana');
+    expect(q<HTMLInputElement>('classify-title')!.value).toBe('Pantalla blanca');
+
+    q('classify-convert')!.click();
+    await settle();
+    expect(convertInboxItem).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ title: 'Pantalla blanca' }),
+    );
+  });
+
+  it('CP-15-08: a quick capture shows no reporter', async () => {
+    const { q } = await render();
+    expect(q('inbox-reporter')).toBeNull();
+    expect(q('inbox-item')!.textContent).toContain('Captura rápida');
+  });
+
   it('CP-01-09: converting without editing the title uses the captured title', async () => {
     const { q, settle, convertInboxItem } = await render();
     expect(q<HTMLInputElement>('classify-title')!.value).toBe('Revisar logs');

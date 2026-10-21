@@ -58,7 +58,11 @@ interface Draft {
             >
               <span class="min-w-0 break-words">{{ item.title }}</span>
               <span class="shrink-0 text-xs text-muted">
-                {{ 'inbox.source.' + item.source | transloco }} · {{ time(item.createdAt) }}
+                {{ 'inbox.source.' + item.source | transloco }}
+                @if (item.reporter) {
+                  <span data-testid="inbox-reporter"> · {{ item.reporter }}</span>
+                }
+                · {{ time(item.createdAt) }}
               </span>
             </button>
           </li>

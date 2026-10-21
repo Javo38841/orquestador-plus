@@ -59,6 +59,11 @@ function fakeApi(overrides: Partial<AppInfo> = {}, bugs: Bug[] = []): Orquestado
     listJournal: async () => [],
     saveJournalEntry: async () => ({ ok: true, entry: null }),
     search: async () => [],
+    getPortalStatus: async () => ({ running: false, port: null, urls: [] }),
+    setPortalEnabled: async () => ({ running: false, port: null, urls: [] }),
+    listPortalLinks: async () => [],
+    createPortalLink: async () => ({ ok: false, error: 'invalid_project' }),
+    revokePortalLink: async () => false,
     getRemindersEnabled: async () => true,
     setRemindersEnabled: async (enabled: boolean) => enabled,
   };

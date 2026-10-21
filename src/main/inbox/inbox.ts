@@ -1,17 +1,30 @@
 import type Database from 'better-sqlite3';
 import { createTask } from '../tasks/tasks';
 import type { TaskResult } from '../../shared/tasks';
-import { validateCapture, type CaptureResult, type InboxItem } from '../../shared/inbox';
+import {
+  validateCapture,
+  type CaptureResult,
+  type InboxItem,
+  type InboxSource,
+} from '../../shared/inbox';
 
 interface InboxRow {
   id: number;
   title: string;
-  source: 'quick_capture';
+  source: InboxSource;
   created_at: string;
+  reporter: string | null;
 }
 
 function toItem(row: InboxRow): InboxItem {
-  return { id: row.id, title: row.title, source: row.source, createdAt: row.created_at };
+  const item: InboxItem = {
+    id: row.id,
+    title: row.title,
+    source: row.source,
+    createdAt: row.created_at,
+  };
+  if (row.reporter !== null) item.reporter = row.reporter;
+  return item;
 }
 
 /** Validates the payload and stores it as a bare inbox item (title, source, creation date). */
@@ -43,7 +56,9 @@ export function captureItem(
 export function listInbox(db: Database.Database): InboxItem[] {
   const rows = db
     .prepare(
-      'SELECT id, title, source, created_at FROM inbox_items ORDER BY created_at DESC, id DESC',
+      `SELECT i.id, i.title, i.source, i.created_at, r.reporter
+       FROM inbox_items i LEFT JOIN portal_reports r ON r.item_id = i.id
+       ORDER BY i.created_at DESC, i.id DESC`,
     )
     .all() as InboxRow[];
   return rows.map(toItem);

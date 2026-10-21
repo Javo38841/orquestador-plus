@@ -41,6 +41,11 @@ const api: OrquestadorApi = {
   listJournal: () => ipcRenderer.invoke(IpcChannel.listJournal),
   saveJournalEntry: (date, text) => ipcRenderer.invoke(IpcChannel.saveJournalEntry, date, text),
   search: (text) => ipcRenderer.invoke(IpcChannel.search, text),
+  getPortalStatus: () => ipcRenderer.invoke(IpcChannel.getPortalStatus),
+  setPortalEnabled: (enabled) => ipcRenderer.invoke(IpcChannel.setPortalEnabled, enabled),
+  listPortalLinks: () => ipcRenderer.invoke(IpcChannel.listPortalLinks),
+  createPortalLink: (input) => ipcRenderer.invoke(IpcChannel.createPortalLink, input),
+  revokePortalLink: (id) => ipcRenderer.invoke(IpcChannel.revokePortalLink, id),
   getRemindersEnabled: () => ipcRenderer.invoke(IpcChannel.getRemindersEnabled),
   setRemindersEnabled: (enabled) => ipcRenderer.invoke(IpcChannel.setRemindersEnabled, enabled),
 };

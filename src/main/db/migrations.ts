@@ -262,6 +262,55 @@ export const migrations: Migration[] = [
       ) STRICT;
     `,
   },
+  {
+    version: 15,
+    name: 'report_portal',
+    // SQLite cannot alter a CHECK, so inbox_items is rebuilt (ids and the id counter are kept)
+    // and its search triggers recreated. The reporter's name lives apart so the inbox row
+    // stays the same shape for every source.
+    up: `
+      CREATE TABLE inbox_items_new (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        title      TEXT NOT NULL,
+        source     TEXT NOT NULL CHECK (source IN ('quick_capture', 'portal')),
+        created_at TEXT NOT NULL
+      ) STRICT;
+      INSERT INTO inbox_items_new (id, title, source, created_at)
+        SELECT id, title, source, created_at FROM inbox_items;
+      DELETE FROM sqlite_sequence WHERE name = 'inbox_items_new';
+      INSERT INTO sqlite_sequence (name, seq)
+        SELECT 'inbox_items_new', seq FROM sqlite_sequence WHERE name = 'inbox_items';
+      DROP TABLE inbox_items;
+      ALTER TABLE inbox_items_new RENAME TO inbox_items;
+      CREATE INDEX idx_inbox_items_created ON inbox_items (created_at DESC, id DESC);
+
+      CREATE TRIGGER search_inbox_insert AFTER INSERT ON inbox_items BEGIN
+        INSERT INTO search_index (kind, ref_id, title) VALUES ('inbox', new.id, new.title);
+      END;
+      CREATE TRIGGER search_inbox_update AFTER UPDATE OF title ON inbox_items BEGIN
+        UPDATE search_index SET title = new.title WHERE kind = 'inbox' AND ref_id = old.id;
+      END;
+      CREATE TRIGGER search_inbox_delete AFTER DELETE ON inbox_items BEGIN
+        DELETE FROM search_index WHERE kind = 'inbox' AND ref_id = old.id;
+      END;
+
+      CREATE TABLE portal_links (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        token           TEXT NOT NULL UNIQUE,
+        project_id      INTEGER REFERENCES projects (id) ON DELETE SET NULL,
+        created_at      TEXT NOT NULL,
+        expires_at      TEXT NOT NULL,
+        max_submissions INTEGER NOT NULL,
+        submissions     INTEGER NOT NULL DEFAULT 0,
+        revoked_at      TEXT
+      ) STRICT;
+      CREATE TABLE portal_reports (
+        item_id  INTEGER PRIMARY KEY REFERENCES inbox_items (id) ON DELETE CASCADE,
+        reporter TEXT NOT NULL,
+        link_id  INTEGER REFERENCES portal_links (id) ON DELETE SET NULL
+      ) STRICT;
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {
