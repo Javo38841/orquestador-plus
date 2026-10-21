@@ -1,4 +1,4 @@
-import { app, ipcMain } from 'electron';
+import { app, clipboard, ipcMain } from 'electron';
 import type Database from 'better-sqlite3';
 import { IpcChannel, type AppInfo } from '../../shared/ipc';
 import { CHANNEL } from '../channel';
@@ -18,6 +18,8 @@ import {
   setTaskStatus,
   updateTask,
 } from '../tasks/tasks';
+import { createSnippet, deleteSnippet, listSnippets, updateSnippet } from '../snippets/snippets';
+import { SNIPPET_CONTENT_MAX_LENGTH } from '../../shared/snippets';
 import { search } from '../search/search';
 import type { ReminderScheduler } from '../reminders/scheduler';
 import { getRemindersEnabled, setRemindersEnabled } from '../settings/settings';
@@ -115,6 +117,22 @@ export function registerIpcHandlers(
     withDb((d) => setBugStatus(d, id, status)),
   );
   ipcMain.handle(IpcChannel.deleteBug, (_event, id: unknown) => withDb((d) => deleteBug(d, id)));
+
+  ipcMain.handle(IpcChannel.listSnippets, () => withDb(listSnippets));
+  ipcMain.handle(IpcChannel.createSnippet, (_event, input: unknown) =>
+    withDb((d) => createSnippet(d, input)),
+  );
+  ipcMain.handle(IpcChannel.updateSnippet, (_event, id: unknown, input: unknown) =>
+    withDb((d) => updateSnippet(d, id, input)),
+  );
+  ipcMain.handle(IpcChannel.deleteSnippet, (_event, id: unknown) =>
+    withDb((d) => deleteSnippet(d, id)),
+  );
+  ipcMain.handle(IpcChannel.copyToClipboard, (_event, text: unknown) => {
+    if (typeof text !== 'string' || text.length > SNIPPET_CONTENT_MAX_LENGTH) return false;
+    clipboard.writeText(text);
+    return true;
+  });
 
   ipcMain.handle(IpcChannel.listJournal, () => withDb(listJournal));
   ipcMain.handle(IpcChannel.saveJournalEntry, (_event, date: unknown, text: unknown) =>
