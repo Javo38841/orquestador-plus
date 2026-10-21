@@ -3,17 +3,20 @@ import { Component, computed, inject, OnInit } from '@angular/core';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import type { Task } from '../../../../shared/tasks';
 import { dueLabel, formatLongDate, todayGroups } from '../../../../shared/today';
+import { FocusBlock } from './focus-block';
 import { TasksStore } from '../tasks/tasks.store';
 
 /** Hoy (RF-03): overdue tasks and what is due or marked for today. */
 @Component({
   selector: 'app-today-page',
-  imports: [TranslocoPipe, NgTemplateOutlet],
+  imports: [TranslocoPipe, NgTemplateOutlet, FocusBlock],
   template: `
     <header class="mb-8">
       <h1 class="text-2xl font-semibold">{{ 'nav.today' | transloco }}</h1>
       <p class="mt-1 text-sm text-muted" data-testid="today-subtitle">{{ subtitle() }}</p>
     </header>
+
+    <app-focus-block [tasks]="pending()" />
 
     @if (groups().overdue.length === 0 && groups().today.length === 0) {
       <p class="rounded-lg border border-line bg-surface px-5 py-4 text-sm text-muted">
@@ -84,6 +87,8 @@ export class TodayPage implements OnInit {
   protected readonly store = inject(TasksStore);
   private readonly transloco = inject(TranslocoService);
   protected readonly groups = computed(() => todayGroups(this.store.tasks()));
+
+  protected readonly pending = computed(() => [...this.groups().overdue, ...this.groups().today]);
 
   protected readonly subtitle = computed(() => {
     const { overdue, today } = this.groups();
