@@ -178,6 +178,26 @@ describe('wiki', () => {
     expect(fs.existsSync(path.join(wiki.dir, 'B.md'))).toBe(true);
   });
 
+  it('CP-08-07: a case-only rename leaves a single file and the new content survives a rebuild', () => {
+    create('Nota', 'viejo');
+
+    const result = updateNote(wiki, 'Nota', { title: 'nota', content: 'nuevo' });
+
+    expect(result.ok && result.note.slug).toBe('nota');
+    const files = fs.readdirSync(wiki.dir).filter((n) => n.endsWith('.md'));
+    expect(files).toEqual(['nota.md']);
+    rebuildIndex(wiki);
+    expect(note('nota').content).toBe('nuevo');
+  });
+
+  it('CP-08-08: an unreadable file does not abort the rebuild', () => {
+    create('A');
+    fs.symlinkSync(path.join(wiki.dir, 'missing'), path.join(wiki.dir, 'broken.md'));
+
+    expect(rebuildIndex(wiki)).toBe(1);
+    expect(listNotes(wiki).map((n) => n.slug)).toEqual(['A']);
+  });
+
   it('CP-08-08: deleting datos.db rebuilds the index and backlinks from wiki/', () => {
     create('B');
     create('A', '[[B]] [[Pendiente]]');

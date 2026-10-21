@@ -197,6 +197,17 @@ export function createNote(wiki: Wiki, input: unknown, now: Date = new Date()): 
   return getNote(wiki, slug);
 }
 
+/** True when both paths are physically the same file (case-insensitive file systems). */
+function isSameFile(a: string, b: string): boolean {
+  try {
+    const sa = fs.statSync(a);
+    const sb = fs.statSync(b);
+    return sa.dev === sb.dev && sa.ino === sb.ino;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Rewrites the note. Changing the title renames the file; links that pointed at the old
  * title become pending. File and index change together: a failure rolls the index back.
@@ -218,12 +229,13 @@ export function updateNote(
   const nextSlug = renamed ? slugFromTitle(checked.title) : current.slug;
   const stamp = now.toISOString();
   let written = false;
+  let sameFile = false;
 
   try {
     wiki.db.transaction(() => {
       if (conflicts(wiki, current.id, nextSlug, key)) throw new WikiError('duplicate');
       const target = filePath(wiki, nextSlug);
-      const sameFile = nextSlug.toLowerCase() === current.slug.toLowerCase();
+      sameFile = isSameFile(filePath(wiki, current.slug), target);
       if (nextSlug !== current.slug && !sameFile && fs.existsSync(target)) {
         throw new WikiError('duplicate');
       }
@@ -239,7 +251,8 @@ export function updateNote(
       if (nextSlug !== current.slug && !sameFile) fs.rmSync(filePath(wiki, current.slug));
     })();
   } catch (error) {
-    if (written && nextSlug !== current.slug) fs.rmSync(filePath(wiki, nextSlug), { force: true });
+    if (written && nextSlug !== current.slug && !sameFile)
+      fs.rmSync(filePath(wiki, nextSlug), { force: true });
     return failure(error);
   }
   return getNote(wiki, nextSlug);
@@ -259,8 +272,8 @@ export function deleteNote(wiki: Wiki, slug: unknown): boolean {
 
 /**
  * Rebuilds the whole index from the files in `wiki/` (ADR-001): run at startup, so a
- * deleted `datos.db` loses nothing. A file whose title or name clashes with an earlier
- * one is left out of the index (and untouched on disk).
+ * deleted `datos.db` loses nothing. A file that cannot be read, or whose title or name clashes
+ * with an earlier one, is left out of the index (and untouched on disk).
  */
 export function rebuildIndex(wiki: Wiki): number {
   fs.mkdirSync(wiki.dir, { recursive: true });
@@ -281,7 +294,13 @@ export function rebuildIndex(wiki: Wiki): number {
     let count = 0;
     for (const slug of names) {
       const file = filePath(wiki, slug);
-      const parsed = parseNote(fs.readFileSync(file, 'utf8'));
+      let text: string;
+      try {
+        text = fs.readFileSync(file, 'utf8');
+      } catch {
+        continue; // an unreadable file must not abort the whole rebuild
+      }
+      const parsed = parseNote(text);
       const title = parsed.title ?? slug;
       const key = noteKey(title);
       if (slugs.has(slug.toLowerCase()) || keys.has(key)) continue;
