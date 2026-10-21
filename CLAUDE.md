@@ -69,7 +69,7 @@ built and promoting `develop` to `main`.
 4. **dev** (`agent-dev.yml`, `orquestador-dev` app): labels the story `en-progreso`,
    creates a branch, writes tests first, implements, runs the checks, commits and
    opens a PR to `develop` with `Refs #N`. Instructions: `.claude/agents/dev.md`.
-5. CI runs on Linux and Windows.
+5. CI runs on Linux.
 6. **reviewer** (`agent-review.yml`, `orquestador-review` app): a red CI goes back to
    dev as "changes requested"; a green CI gets a read-only review
    (`.claude/agents/reviewer.md`) that approves and squash-merges, or requests changes.
@@ -149,8 +149,10 @@ The build channel comes from `ORQ_CHANNEL` (`prod` or anything else = `dev`). On
 ## CI/CD
 
 - `ci.yml` (every PR to `develop` or `main`): lint, format, type-check, unit tests,
-  build, `package:dir` and E2E, on Linux and Windows. Required checks: `Linux`,
-  `Windows`; PRs to `main` also need `Source branch` (only `develop` or `hotfix/*`).
-- `dev-build.yml` (push to `develop`): Dev installers to the `dev-latest` pre-release.
+  build, `package:dir` and E2E. PRs to `develop` run on Linux only (required check:
+  `Linux`). PRs to `main` also run on Windows (RNF-12) and need `Source branch` (only
+  `develop` or `hotfix/*`).
+- `dev-build.yml` (push to `develop`): Linux Dev installers to the `dev-latest`
+  pre-release.
 - `release.yml` (tag `vX.Y.Z` on `main`, matching `package.json`): production
   installers into a draft release.

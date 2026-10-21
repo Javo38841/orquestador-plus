@@ -1,7 +1,8 @@
 name: Dev build
 
-# Every merge into develop publishes "OrquestadorPlus Dev" installers to the
-# `dev-latest` pre-release, replacing the previous ones.
+# Every merge into develop publishes "OrquestadorPlus Dev" Linux installers to the
+# `dev-latest` pre-release, replacing the previous ones. Windows is built only for
+# production releases (release.yml) and checked on PRs to main.
 on:
   push:
     branches: [develop]
@@ -24,8 +25,6 @@ jobs:
         include:
           - os: ubuntu-latest
             label: Linux
-          - os: windows-latest
-            label: Windows
     steps:
       - uses: actions/checkout@v7
 
@@ -57,7 +56,6 @@ jobs:
         with:
           name: dev-${{ matrix.label }}
           path: |
-            release/*.exe
             release/*.AppImage
             release/*.rpm
           if-no-files-found: error

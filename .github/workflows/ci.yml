@@ -13,18 +13,15 @@ permissions:
 
 jobs:
   app:
-    # Job names are the required status checks in the rulesets: "Linux" and "Windows".
+    # Job names are the required status checks in the rulesets. PRs to develop run
+    # only "Linux"; PRs to main (release promotion) also run "Windows" (RNF-12).
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            label: Linux
-          - os: windows-latest
-            label: Windows
+        include: ${{ fromJSON(github.base_ref == 'main' && '[{"os":"ubuntu-latest","label":"Linux"},{"os":"windows-latest","label":"Windows"}]' || '[{"os":"ubuntu-latest","label":"Linux"}]') }}
     steps:
       - uses: actions/checkout@v7
 
