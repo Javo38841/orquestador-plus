@@ -30,8 +30,11 @@ export interface LaunchedApp {
   close(): Promise<void>;
 }
 
-/** Launches the packaged app against a throwaway data folder. */
-export async function launchApp(): Promise<LaunchedApp> {
+/**
+ * Launches the packaged app against a throwaway data folder, or against an
+ * existing one (`dataDir`) to simulate closing and reopening the app.
+ */
+export async function launchApp(existingDataDir?: string): Promise<LaunchedApp> {
   const executablePath = packagedExecutable();
   if (!fs.existsSync(executablePath)) {
     throw new Error(
@@ -39,7 +42,7 @@ export async function launchApp(): Promise<LaunchedApp> {
     );
   }
 
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orq-e2e-'));
+  const dataDir = existingDataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'orq-e2e-'));
   const app = await electron.launch({
     executablePath,
     // CI runners cannot use Chromium's setuid sandbox; the renderer sandbox stays on.
