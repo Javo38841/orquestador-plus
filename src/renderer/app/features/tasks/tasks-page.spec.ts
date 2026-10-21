@@ -16,6 +16,7 @@ const task = (id: number, extra: Partial<Task> = {}): Task => ({
   forToday: false,
   tags: [],
   createdAt: '2026-03-01T10:00:00.000Z',
+  completedAt: null,
   ...extra,
 });
 

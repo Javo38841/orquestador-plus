@@ -253,7 +253,7 @@ const EMPTY_DRAFT: Draft = { title: '', dueDate: '', project: '', newProjectName
                   {{ 'tasks.confirmNo' | transloco }}
                 </button>
               } @else {
-                @if (task.status === 'todo') {
+                @if (task.status !== 'done') {
                   <button
                     type="button"
                     class="rounded-md border px-2 py-1"

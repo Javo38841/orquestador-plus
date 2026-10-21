@@ -1,12 +1,13 @@
 import { Routes } from '@angular/router';
 import { InboxPage } from './features/inbox/inbox-page';
 import { TodayPage } from './features/today/today-page';
+import { BoardPage } from './features/board/board-page';
 import { TasksPage } from './features/tasks/tasks-page';
 import { SectionPage } from './features/section-page/section-page';
 import { NAVIGATION } from './layout/navigation';
 
 const sectionRoutes: Routes = NAVIGATION.flatMap((group) => group.items)
-  .filter((item) => !['inbox', 'tasks', 'today'].includes(item.path))
+  .filter((item) => !['inbox', 'tasks', 'today', 'board'].includes(item.path))
   .map((item) => ({
     path: item.path,
     component: SectionPage,
@@ -18,6 +19,7 @@ export const routes: Routes = [
   { path: 'today', component: TodayPage },
   { path: 'inbox', component: InboxPage },
   { path: 'tasks', component: TasksPage },
+  { path: 'board', component: BoardPage },
   ...sectionRoutes,
   { path: '**', redirectTo: 'today' },
 ];

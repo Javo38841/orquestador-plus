@@ -5,6 +5,7 @@ import {
   type Task,
   type TaskError,
   type TaskInput,
+  type TaskStatus,
 } from '../../../../shared/tasks';
 import { DESKTOP_API } from '../../core/desktop-api';
 
@@ -27,7 +28,7 @@ export class TasksStore {
     const tag = this.tagFilter();
     return this.taskList().filter(
       (t) =>
-        (this.showCompleted() || t.status === 'todo') && (tag === null || t.tags.includes(tag)),
+        (this.showCompleted() || t.status !== 'done') && (tag === null || t.tags.includes(tag)),
     );
   });
 
@@ -60,8 +61,13 @@ export class TasksStore {
   }
 
   async setDone(task: Task, done: boolean): Promise<void> {
+    await this.move(task, done ? 'done' : 'todo');
+  }
+
+  /** Moves a task to another status (board columns); "done" completes it. */
+  async move(task: Task, status: TaskStatus): Promise<void> {
     if (!this.api) return;
-    const result = await this.api.setTaskStatus(task.id, done ? 'done' : 'todo');
+    const result = await this.api.setTaskStatus(task.id, status);
     if (result.ok) {
       this.taskList.update((list) => list.map((t) => (t.id === task.id ? result.task : t)));
     }
