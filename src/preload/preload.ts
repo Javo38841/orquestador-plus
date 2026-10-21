@@ -13,6 +13,7 @@ const api: OrquestadorApi = {
   setTaskStatus: (id, status) => ipcRenderer.invoke(IpcChannel.setTaskStatus, id, status),
   setTaskForToday: (id, forToday) => ipcRenderer.invoke(IpcChannel.setTaskForToday, id, forToday),
   deleteTask: (id) => ipcRenderer.invoke(IpcChannel.deleteTask, id),
+  listTags: () => ipcRenderer.invoke(IpcChannel.listTags),
   listProjects: () => ipcRenderer.invoke(IpcChannel.listProjects),
   createProject: (name) => ipcRenderer.invoke(IpcChannel.createProject, name),
   deleteProject: (id) => ipcRenderer.invoke(IpcChannel.deleteProject, id),

@@ -1,7 +1,8 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal, viewChild } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
 import type { InboxItem } from '../../../../shared/inbox';
 import type { TaskError } from '../../../../shared/tasks';
+import { TAG_ERROR_KEYS, TagsEditor } from '../tags/tags-editor';
 import { TasksStore } from '../tasks/tasks.store';
 import { InboxStore } from './inbox.store';
 import { relativeTime } from './relative-time';
@@ -12,6 +13,7 @@ const ERROR_KEYS: Record<TaskError, string> = {
   invalid_date: 'tasks.errors.invalidDate',
   invalid_project: 'tasks.errors.invalidProject',
   not_found: 'tasks.errors.notFound',
+  ...TAG_ERROR_KEYS,
 };
 
 const NEW_PROJECT = 'new';
@@ -22,12 +24,13 @@ interface Draft {
   /** '' = loose, 'new' = create from `newProjectName`, otherwise a project id. */
   project: string;
   newProjectName: string;
+  tags: string[];
 }
 
 /** Inbox (RF-01): list of captured items and the "Clasificar" panel (convert or discard). */
 @Component({
   selector: 'app-inbox-page',
-  imports: [TranslocoPipe],
+  imports: [TranslocoPipe, TagsEditor],
   template: `
     <header class="mb-8">
       <h1 class="text-2xl font-semibold">{{ 'nav.inbox' | transloco }}</h1>
@@ -147,6 +150,11 @@ interface Draft {
             </label>
           }
         </div>
+        <app-tags-editor
+          [tags]="d.tags"
+          (tagsChange)="patch({ tags: $event })"
+          [known]="tasks.tags()"
+        />
         @if (error(); as key) {
           <p class="text-sm text-warn" role="alert" data-testid="classify-error">
             {{ key | transloco }}
@@ -207,6 +215,7 @@ export class InboxPage implements OnInit {
   protected readonly draft = signal<Draft | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly confirmingDiscard = signal(false);
+  private readonly tagsEditor = viewChild(TagsEditor);
   private readonly selected = signal<InboxItem | null>(null);
   protected readonly selectedId = computed(() => this.selected()?.id ?? null);
 
@@ -223,7 +232,7 @@ export class InboxPage implements OnInit {
     this.selected.set(item);
     this.error.set(null);
     this.confirmingDiscard.set(false);
-    this.draft.set({ title: item.title, dueDate: '', project: '', newProjectName: '' });
+    this.draft.set({ title: item.title, dueDate: '', project: '', newProjectName: '', tags: [] });
   }
 
   /** "Dejar para después": closes the panel and leaves the item untouched. */
@@ -248,6 +257,11 @@ export class InboxPage implements OnInit {
       this.error.set(ERROR_KEYS.invalid_project);
       return;
     }
+    const pendingTag = this.tagsEditor()?.flush();
+    if (pendingTag) {
+      this.error.set(pendingTag);
+      return;
+    }
     let failure: TaskError | null;
     try {
       failure = await this.store.convert(item.id, {
@@ -255,6 +269,7 @@ export class InboxPage implements OnInit {
         dueDate: d.dueDate || null,
         projectId: d.project === '' || creating ? null : Number(d.project),
         newProjectName: creating ? d.newProjectName : null,
+        tags: this.draft()!.tags,
       });
     } catch {
       this.error.set('inbox.classify.failed');

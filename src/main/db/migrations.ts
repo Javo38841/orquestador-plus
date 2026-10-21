@@ -62,6 +62,22 @@ export const migrations: Migration[] = [
       ALTER TABLE tasks ADD COLUMN for_today INTEGER NOT NULL DEFAULT 0 CHECK (for_today IN (0, 1));
     `,
   },
+  {
+    version: 5,
+    name: 'tags',
+    up: `
+      CREATE TABLE tags (
+        id   INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE
+      ) STRICT;
+      CREATE TABLE task_tags (
+        task_id INTEGER NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+        tag_id  INTEGER NOT NULL REFERENCES tags (id) ON DELETE CASCADE,
+        PRIMARY KEY (task_id, tag_id)
+      ) STRICT, WITHOUT ROWID;
+      CREATE INDEX idx_task_tags_tag ON task_tags (tag_id);
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {

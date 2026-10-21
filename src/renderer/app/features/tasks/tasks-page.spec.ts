@@ -14,11 +14,15 @@ const task = (id: number, extra: Partial<Task> = {}): Task => ({
   projectId: null,
   projectName: null,
   forToday: false,
+  tags: [],
   createdAt: '2026-03-01T10:00:00.000Z',
   ...extra,
 });
 
-async function render(stored: Task[]) {
+async function render(
+  stored: Task[],
+  overrides: Partial<Record<keyof OrquestadorApi, unknown>> = {},
+) {
   const deleteTask = vi.fn(async () => true);
   const createTask = vi.fn(async (input): Promise<TaskResult> => ({
     ok: true,
@@ -26,9 +30,11 @@ async function render(stored: Task[]) {
   }));
   const api = {
     listTasks: async () => stored,
+    listTags: async () => ['infra', 'infrared'],
     listProjects: async () => [{ id: 1, name: 'api-gateway' }],
     createTask,
     deleteTask,
+    ...overrides,
   } as unknown as OrquestadorApi;
   await TestBed.configureTestingModule({
     imports: [
@@ -146,6 +152,7 @@ describe('TasksPage', () => {
       dueDate: null,
       projectId: null,
       newProjectName: null,
+      tags: [],
     });
     expect(q('task-form')).toBeNull();
   });
@@ -166,5 +173,117 @@ describe('TasksPage', () => {
 
     expect(q('task-error')).not.toBeNull();
     expect(createTask).not.toHaveBeenCalled();
+  });
+
+  const type = (input: HTMLInputElement, value: string) => {
+    input.value = value;
+    input.dispatchEvent(new Event('input'));
+  };
+
+  it('CP-07-01: a task with tags shows a #chip per tag', async () => {
+    const { el } = await render([task(1, { tags: ['infra', 'api'] }), task(2)]);
+    const chips = [...el.querySelectorAll('[data-testid="task-tag"]')].map((c) =>
+      c.textContent?.trim(),
+    );
+    expect(chips).toEqual(['#infra', '#api']);
+  });
+
+  it('CP-07-02: typing "#Infra" adds one normalized chip, a duplicate is ignored', async () => {
+    const { q, el, settle, createTask } = await render([]);
+    q('new-task')!.click();
+    await settle();
+    type(q<HTMLInputElement>('task-title')!, 'Migrar DNS');
+    for (const raw of ['#Infra', 'infra']) {
+      type(q<HTMLInputElement>('tag-input')!, raw);
+      q('tag-add')!.click();
+      await settle();
+    }
+    const chips = [...el.querySelectorAll('[data-testid="tag-chip"]')].map((c) =>
+      c.textContent?.replace('×', '').trim(),
+    );
+    expect(chips).toEqual(['#infra']);
+
+    q('task-save')!.click();
+    await settle();
+    expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ tags: ['infra'] }));
+  });
+
+  it('CP-07-02: a tag typed but not added is saved with the task', async () => {
+    const { q, settle, createTask } = await render([]);
+    q('new-task')!.click();
+    await settle();
+    type(q<HTMLInputElement>('task-title')!, 'x');
+    type(q<HTMLInputElement>('tag-input')!, 'Infra');
+    q('task-save')!.click();
+    await settle();
+    expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ tags: ['infra'] }));
+  });
+
+  it('CP-07-03: an empty tag, one with spaces or over 30 characters shows a clear message', async () => {
+    const { q, settle, createTask } = await render([]);
+    q('new-task')!.click();
+    await settle();
+    const cases: [string, string][] = [
+      ['   ', 'La etiqueta no puede estar vacía'],
+      ['dos palabras', 'La etiqueta no puede contener espacios'],
+      ['a'.repeat(31), 'La etiqueta admite como máximo 30 caracteres'],
+    ];
+    for (const [value, message] of cases) {
+      type(q<HTMLInputElement>('tag-input')!, value);
+      q('tag-add')!.click();
+      await settle();
+      expect(q('tag-error')?.textContent).toContain(message);
+    }
+    expect(q('tag-chip')).toBeNull();
+    expect(createTask).not.toHaveBeenCalled();
+  });
+
+  it('CP-07-04: the filter shows only tasks with the tag and "Todas" brings everything back', async () => {
+    const { q, el, settle } = await render([
+      task(1, { tags: ['infra'] }),
+      task(2),
+      task(3, { tags: ['api'] }),
+    ]);
+    const rows = () => el.querySelectorAll('[data-testid="task-row"]').length;
+    expect(rows()).toBe(3);
+
+    const options = [...el.querySelectorAll<HTMLElement>('[data-testid="tag-filter-option"]')];
+    options.find((b) => b.textContent?.trim() === '#infra')!.click();
+    await settle();
+    expect(rows()).toBe(1);
+
+    q('tag-filter-all')!.click();
+    await settle();
+    expect(rows()).toBe(3);
+  });
+
+  it('CP-07-05: removing a chip while editing sends the remaining tags only', async () => {
+    const updateTask = vi.fn(async (id: number): Promise<TaskResult> => ({
+      ok: true,
+      task: task(id),
+    }));
+    const { q, settle } = await render([task(1, { tags: ['api', 'infra'] })], { updateTask });
+    q('task-edit')!.click();
+    await settle();
+    q('tag-remove')!.click();
+    await settle();
+    q('task-save')!.click();
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(1, expect.objectContaining({ tags: ['infra'] }));
+  });
+
+  it('CP-07-06: typing a prefix suggests existing tags and picking one adds it', async () => {
+    const { q, el, settle } = await render([]);
+    q('new-task')!.click();
+    await settle();
+    type(q<HTMLInputElement>('tag-input')!, 'inf');
+    await settle();
+    const suggestions = [...el.querySelectorAll<HTMLElement>('[data-testid="tag-suggestion"]')];
+    expect(suggestions.map((s) => s.textContent?.trim())).toEqual(['#infra', '#infrared']);
+
+    suggestions[0].click();
+    await settle();
+    expect(el.querySelectorAll('[data-testid="tag-chip"]')).toHaveLength(1);
+    expect(q('tag-suggestions')).toBeNull();
   });
 });

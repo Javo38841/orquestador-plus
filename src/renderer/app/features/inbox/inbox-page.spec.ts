@@ -20,6 +20,7 @@ async function render() {
   const api = {
     listInbox: async () => [item],
     listTasks: async () => [],
+    listTags: async () => ['infra'],
     listProjects: async () => [{ id: 3, name: 'cabina' }],
     convertInboxItem,
     discardInboxItem,
@@ -60,6 +61,7 @@ describe('InboxPage classify panel', () => {
       dueDate: null,
       projectId: null,
       newProjectName: null,
+      tags: [],
     });
     expect(q('classify-panel')).toBeNull();
     expect(q('inbox-item')).toBeNull();
@@ -102,5 +104,26 @@ describe('InboxPage classify panel', () => {
       expect(button.disabled).toBe(true);
       expect(button.textContent).toContain('Disponible pronto');
     }
+  });
+
+  it('CP-07-07: tags added in the Clasificar panel are sent with the conversion', async () => {
+    const { q, settle, convertInboxItem } = await render();
+    const input = q<HTMLInputElement>('tag-input')!;
+    input.value = '#Infra';
+    input.dispatchEvent(new Event('input'));
+    q('tag-add')!.click();
+    await settle();
+    q('classify-convert')!.click();
+    await settle();
+    expect(convertInboxItem).toHaveBeenCalledWith(1, expect.objectContaining({ tags: ['infra'] }));
+  });
+
+  it('CP-07-07: the panel suggests existing tags while typing', async () => {
+    const { q, settle } = await render();
+    const input = q<HTMLInputElement>('tag-input')!;
+    input.value = 'in';
+    input.dispatchEvent(new Event('input'));
+    await settle();
+    expect(q('tag-suggestion')?.textContent?.trim()).toBe('#infra');
   });
 });

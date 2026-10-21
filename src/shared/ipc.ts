@@ -18,6 +18,7 @@ export const IpcChannel = {
   setTaskStatus: 'tasks:set-status',
   setTaskForToday: 'tasks:set-for-today',
   deleteTask: 'tasks:delete',
+  listTags: 'tags:list',
   listProjects: 'projects:list',
   createProject: 'projects:create',
   deleteProject: 'projects:delete',
@@ -47,6 +48,8 @@ export interface OrquestadorApi {
   setTaskStatus(id: number, status: TaskStatus): Promise<TaskResult>;
   setTaskForToday(id: number, forToday: boolean): Promise<TaskResult>;
   deleteTask(id: number): Promise<boolean>;
+  /** Tags used by at least one task, for suggestions and the filter. */
+  listTags(): Promise<string[]>;
   listProjects(): Promise<Project[]>;
   createProject(name: string): Promise<ProjectResult>;
   deleteProject(id: number): Promise<boolean>;

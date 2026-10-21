@@ -53,6 +53,13 @@ import { TasksStore } from '../tasks/tasks.store';
               (change)="store.setDone(task, $any($event.target).checked)"
             />
             <span class="min-w-0 flex-1 break-words">{{ task.title }}</span>
+            @for (tag of task.tags; track tag) {
+              <span
+                class="rounded-full bg-line px-2 py-0.5 text-xs text-muted"
+                data-testid="today-tag"
+                >#{{ tag }}</span
+              >
+            }
             <span
               class="rounded-full px-2 py-0.5 text-xs"
               [class]="task.projectName ? 'bg-project/20 text-project' : 'bg-line text-muted'"

@@ -80,6 +80,22 @@ describe('inbox', () => {
       expect(listTasks(db).map((t) => t.title)).toEqual(['Revisar logs']);
     });
 
+    it('CP-07-07: converting an item can assign tags to the new task', () => {
+      captureItem(db, 'Rotar claves');
+      const result = convertToTask(db, 1, { title: 'Rotar claves', tags: ['Infra', 'seguridad'] });
+      expect(result.ok && result.task.tags).toEqual(['infra', 'seguridad']);
+      expect(listTasks(db)[0].tags).toEqual(['infra', 'seguridad']);
+    });
+
+    it('CP-07-07: an invalid tag keeps the item in the inbox', () => {
+      captureItem(db, 'Rotar claves');
+      expect(convertToTask(db, 1, { title: 'Rotar claves', tags: ['dos palabras'] })).toEqual({
+        ok: false,
+        error: 'tag_spaces',
+      });
+      expect(listInbox(db)).toHaveLength(1);
+    });
+
     it('CP-01-08: converting assigns project and due date and removes the item', () => {
       captureItem(db, 'Arreglar sensor');
       const result = convertToTask(db, 1, {

@@ -72,3 +72,44 @@ test('CP-03-07: completing a task from Hoy removes it and lowers the count', asy
   await expect(item).toHaveCount(0);
   await expect(page.getByTestId('today-subtitle')).toContainText('0 pendientes');
 });
+
+test('CP-07-01: a tag added to a task shows as #infra in Tareas and in Hoy', async () => {
+  const { page } = launched;
+  await page.getByTestId('new-task').click();
+  await page.getByTestId('task-title').fill('Migrar DNS');
+  await page.getByTestId('tag-input').fill('Infra');
+  await page.getByTestId('tag-add').click();
+  await page.getByTestId('task-save').click();
+
+  const row = page.getByTestId('task-row').filter({ hasText: 'Migrar DNS' });
+  await expect(row.getByTestId('task-tag')).toHaveText('#infra');
+
+  await row.getByTestId('task-today').click();
+  await page.getByRole('link', { name: 'Hoy' }).click();
+  const item = page.getByTestId('today-task').filter({ hasText: 'Migrar DNS' });
+  await expect(item.getByTestId('today-tag')).toHaveText('#infra');
+});
+
+test('CP-07-04: filtering Tareas by #infra hides tasks without it until the filter is removed', async () => {
+  const { page } = launched;
+  for (const [title, tag] of [
+    ['Con etiqueta', 'infra'],
+    ['Sin etiqueta', ''],
+  ]) {
+    await page.getByTestId('new-task').click();
+    await page.getByTestId('task-title').fill(title);
+    if (tag) {
+      await page.getByTestId('tag-input').fill(tag);
+      await page.getByTestId('tag-add').click();
+    }
+    await page.getByTestId('task-save').click();
+    await expect(page.getByTestId('task-row').filter({ hasText: title })).toBeVisible();
+  }
+
+  await page.getByTestId('tag-filter-option').filter({ hasText: '#infra' }).click();
+  await expect(page.getByTestId('task-row')).toHaveCount(1);
+  await expect(page.getByTestId('task-row').filter({ hasText: 'Con etiqueta' })).toBeVisible();
+
+  await page.getByTestId('tag-filter-all').click();
+  await expect(page.getByTestId('task-row')).toHaveCount(2);
+});

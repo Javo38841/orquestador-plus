@@ -59,6 +59,7 @@ test('ADR-003: the renderer has no access to Node', async () => {
       'getAppInfo',
       'listInbox',
       'listProjects',
+      'listTags',
       'listTasks',
       'setTaskForToday',
       'setTaskStatus',

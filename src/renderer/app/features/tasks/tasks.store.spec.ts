@@ -12,12 +12,14 @@ const task = (id: number, status: Task['status'] = 'todo', title = `t${id}`): Ta
   projectId: null,
   projectName: null,
   forToday: false,
+  tags: [],
   createdAt: '2026-03-01T10:00:00.000Z',
 });
 
 function setup(stored: Task[]) {
   const api = {
     listTasks: vi.fn(async () => stored),
+    listTags: vi.fn(async () => ['api', 'infra']),
     listProjects: vi.fn(async () => []),
     createTask: vi.fn(async (input): Promise<TaskResult> => ({
       ok: true,
@@ -98,5 +100,30 @@ describe('TasksStore', () => {
 
     await store.setForToday(store.tasks()[0], false);
     expect(store.tasks()[0].forToday).toBe(false);
+  });
+
+  it('CP-07-04: filtering by a tag shows only tasks that have it, clearing it shows all', async () => {
+    const { store } = setup([
+      { ...task(1), tags: ['infra'] },
+      task(2),
+      { ...task(3), tags: ['api', 'infra'] },
+    ]);
+    await store.load();
+    expect(store.tags()).toEqual(['api', 'infra']);
+
+    store.tagFilter.set('infra');
+    expect(store.visible().map((t) => t.id)).toEqual([1, 3]);
+    store.tagFilter.set('api');
+    expect(store.visible().map((t) => t.id)).toEqual([3]);
+
+    store.tagFilter.set(null);
+    expect(store.visible().map((t) => t.id)).toEqual([1, 2, 3]);
+  });
+
+  it('CP-07-04: the tag filter is dropped when that tag is no longer in use', async () => {
+    const { store } = setup([task(1)]);
+    store.tagFilter.set('gone');
+    await store.load();
+    expect(store.tagFilter()).toBeNull();
   });
 });
