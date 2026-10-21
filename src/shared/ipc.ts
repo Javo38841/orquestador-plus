@@ -1,4 +1,5 @@
 import type { Bug, BugInput, BugResult, BugStatus } from './bugs';
+import type { Snippet, SnippetInput, SnippetResult } from './snippets';
 import type { JournalEntry, JournalResult } from './journal';
 import type { CaptureResult, InboxItem } from './inbox';
 import type { SearchResult } from './search';
@@ -37,6 +38,11 @@ export const IpcChannel = {
   updateBug: 'bugs:update',
   setBugStatus: 'bugs:set-status',
   deleteBug: 'bugs:delete',
+  listSnippets: 'snippets:list',
+  createSnippet: 'snippets:create',
+  updateSnippet: 'snippets:update',
+  deleteSnippet: 'snippets:delete',
+  copyToClipboard: 'clipboard:write-text',
   listJournal: 'journal:list',
   saveJournalEntry: 'journal:save',
   search: 'search:query',
@@ -89,6 +95,15 @@ export interface OrquestadorApi {
   updateBug(id: number, input: BugInput): Promise<BugResult>;
   setBugStatus(id: number, status: BugStatus): Promise<BugResult>;
   deleteBug(id: number): Promise<boolean>;
+  /** Snippets and commands, newest first (RF-13). */
+  listSnippets(): Promise<Snippet[]>;
+  createSnippet(input: SnippetInput): Promise<SnippetResult>;
+  /** Edits a snippet; its creation date is kept. */
+  updateSnippet(id: number, input: SnippetInput): Promise<SnippetResult>;
+  /** Deletes the snippet and unlinks its tags. */
+  deleteSnippet(id: number): Promise<boolean>;
+  /** Writes the text, exactly as given, to the system clipboard. Resolves false if rejected. */
+  copyToClipboard(text: string): Promise<boolean>;
   /** Journal entries, most recent day first (RF-12). */
   listJournal(): Promise<JournalEntry[]>;
   /** Upserts the day's entry; a blank text deletes it. */

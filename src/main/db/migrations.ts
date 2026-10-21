@@ -225,6 +225,29 @@ export const migrations: Migration[] = [
       END;
     `,
   },
+  {
+    version: 13,
+    name: 'snippets',
+    // Tags reuse the shared `tags` table. Origin (wiki note) is optional for snippets saved
+    // from the wiki later; loose snippets leave it NULL.
+    up: `
+      CREATE TABLE snippets (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        title      TEXT NOT NULL,
+        type       TEXT NOT NULL CHECK (type IN ('sql', 'command')),
+        content    TEXT NOT NULL,
+        origin     TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE snippet_tags (
+        snippet_id INTEGER NOT NULL REFERENCES snippets (id) ON DELETE CASCADE,
+        tag_id     INTEGER NOT NULL REFERENCES tags (id) ON DELETE CASCADE,
+        PRIMARY KEY (snippet_id, tag_id)
+      ) STRICT, WITHOUT ROWID;
+      CREATE INDEX idx_snippet_tags_tag ON snippet_tags (tag_id);
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {
