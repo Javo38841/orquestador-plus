@@ -31,6 +31,7 @@ jobs:
           private-key: ${{ secrets.REVIEW_APP_PRIVATE_KEY }}
 
       - name: Mark the merged story as in develop
+        id: merged
         if: github.event_name == 'pull_request' && github.event.pull_request.merged
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -39,6 +40,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           issue=$(grep -oE 'Refs #[0-9]+' <<<"$BODY" | head -1 | tr -dc '0-9' || true)
+          echo "issue=${issue:-0}" >> "$GITHUB_OUTPUT"
           if [ -n "$issue" ]; then
             gh issue edit "$issue" --remove-label en-progreso --add-label en-develop
             gh issue comment "$issue" --body "Mergeado en develop con #$PR. Pruébalo en la build Dev (release dev-latest) y cierra la historia si la aceptas."
@@ -48,13 +50,19 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
+          # The story just marked above may still show its old labels for a few
+          # seconds, so it never counts as "in progress".
+          JUST_MERGED: ${{ steps.merged.outputs.issue || '0' }}
         run: |
-          count() { gh issue list --state open --label "$1" --json number --jq length; }
+          # REST lists issues and PRs; it is not affected by search index delays.
+          count() {
+            gh api "repos/$GH_REPO/issues?state=open&labels=$1&per_page=100" \
+              --jq "[.[] | select(.number != $JUST_MERGED)] | length"
+          }
           if [ "$(count agente)" -gt 0 ] || [ "$(count en-progreso)" -gt 0 ]; then
             echo "A story is already in progress."; exit 0
           fi
-          if [ "$(count necesita-humano)" -gt 0 ] || \
-             [ "$(gh pr list --state open --label necesita-humano --json number --jq length)" -gt 0 ]; then
+          if [ "$(count necesita-humano)" -gt 0 ]; then
             echo "Queue paused: something needs the owner (label necesita-humano)."; exit 0
           fi
           next=$(gh issue list --state open --label en-cola --json number --jq 'sort_by(.number) | .[0].number // empty')
