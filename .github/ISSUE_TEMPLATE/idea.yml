@@ -1,0 +1,12 @@
+# The planner agent turns an idea into a story (ADR-004).
+name: Idea
+description: Una idea suelta. El agente planner la convierte en historia con criterios.
+labels: ['idea']
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      placeholder: Quiero poder exportar las tareas a CSV…
+    validations:
+      required: true

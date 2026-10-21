@@ -1,0 +1,44 @@
+# A story: its acceptance criteria (CP-nn-mm) are also its test cases.
+name: Historia
+description: Historia de usuario con criterios de aceptación numerados como casos de prueba.
+title: 'RF-nn: '
+labels: ['story', 'por-aprobar']
+body:
+  - type: input
+    id: requisito
+    attributes:
+      label: Requisito
+      description: ID en docs/definicion-del-proyecto.md (y los RNF que verifica, si aplica).
+      placeholder: RF-01
+    validations:
+      required: true
+  - type: input
+    id: depende
+    attributes:
+      label: Depende de
+      placeholder: '#3'
+  - type: textarea
+    id: historia
+    attributes:
+      label: Historia
+      placeholder: Como desarrollador, quiero … para …
+    validations:
+      required: true
+  - type: textarea
+    id: criterios
+    attributes:
+      label: Criterios de aceptación (casos de prueba)
+      description: Uno por comportamiento, con su capa (unitario, E2E, CI o manual) y "límite" si prueba un borde.
+      value: |
+        - **CP-nn-01** *(E2E)* — Dado …, cuando …, entonces …
+        - **CP-nn-02** *(unitario, límite)* — Dado …, cuando …, entonces …
+    validations:
+      required: true
+  - type: textarea
+    id: fuera
+    attributes:
+      label: Fuera de alcance
+  - type: textarea
+    id: notas
+    attributes:
+      label: Notas
