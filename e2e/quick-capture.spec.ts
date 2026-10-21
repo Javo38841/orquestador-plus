@@ -13,6 +13,9 @@ test.afterEach(async () => {
 
 async function capture(launchedApp: LaunchedApp, text: string): Promise<void> {
   const { page } = launchedApp;
+  // Wait for Angular to render and give the window focus before the shortcut.
+  await expect(page.getByRole('link', { name: 'Bandeja de entrada' })).toBeVisible();
+  await page.locator('body').click({ position: { x: 1, y: 1 } });
   await page.keyboard.press('Control+Space');
   await page.getByTestId('capture-input').fill(text);
   await page.keyboard.press('Enter');
