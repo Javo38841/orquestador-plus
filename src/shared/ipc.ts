@@ -1,4 +1,5 @@
 import type { Bug, BugInput, BugResult, BugStatus } from './bugs';
+import type { Topic, TopicInput, TopicResult, TopicStatus } from './learning';
 import type { Snippet, SnippetInput, SnippetResult } from './snippets';
 import type { JournalEntry, JournalResult } from './journal';
 import type { CaptureResult, InboxItem } from './inbox';
@@ -43,6 +44,11 @@ export const IpcChannel = {
   updateSnippet: 'snippets:update',
   deleteSnippet: 'snippets:delete',
   copyToClipboard: 'clipboard:write-text',
+  listTopics: 'learning:list',
+  createTopic: 'learning:create',
+  updateTopic: 'learning:update',
+  setTopicStatus: 'learning:set-status',
+  deleteTopic: 'learning:delete',
   listJournal: 'journal:list',
   saveJournalEntry: 'journal:save',
   search: 'search:query',
@@ -104,6 +110,14 @@ export interface OrquestadorApi {
   deleteSnippet(id: number): Promise<boolean>;
   /** Writes the text, exactly as given, to the system clipboard. Resolves false if rejected. */
   copyToClipboard(text: string): Promise<boolean>;
+  /** Learning topics, newest first (RF-14). */
+  listTopics(): Promise<Topic[]>;
+  /** Creates a topic with progress "todo". */
+  createTopic(input: TopicInput): Promise<TopicResult>;
+  /** Edits title and notes; status and creation date are kept. */
+  updateTopic(id: number, input: TopicInput): Promise<TopicResult>;
+  setTopicStatus(id: number, status: TopicStatus): Promise<TopicResult>;
+  deleteTopic(id: number): Promise<boolean>;
   /** Journal entries, most recent day first (RF-12). */
   listJournal(): Promise<JournalEntry[]>;
   /** Upserts the day's entry; a blank text deletes it. */

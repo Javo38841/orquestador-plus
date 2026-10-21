@@ -20,6 +20,13 @@ import {
 } from '../tasks/tasks';
 import { createSnippet, deleteSnippet, listSnippets, updateSnippet } from '../snippets/snippets';
 import { SNIPPET_CONTENT_MAX_LENGTH } from '../../shared/snippets';
+import {
+  createTopic,
+  deleteTopic,
+  listTopics,
+  setTopicStatus,
+  updateTopic,
+} from '../learning/learning';
 import { search } from '../search/search';
 import type { ReminderScheduler } from '../reminders/scheduler';
 import { getRemindersEnabled, setRemindersEnabled } from '../settings/settings';
@@ -133,6 +140,20 @@ export function registerIpcHandlers(
     clipboard.writeText(text);
     return true;
   });
+
+  ipcMain.handle(IpcChannel.listTopics, () => withDb(listTopics));
+  ipcMain.handle(IpcChannel.createTopic, (_event, input: unknown) =>
+    withDb((d) => createTopic(d, input)),
+  );
+  ipcMain.handle(IpcChannel.updateTopic, (_event, id: unknown, input: unknown) =>
+    withDb((d) => updateTopic(d, id, input)),
+  );
+  ipcMain.handle(IpcChannel.setTopicStatus, (_event, id: unknown, status: unknown) =>
+    withDb((d) => setTopicStatus(d, id, status)),
+  );
+  ipcMain.handle(IpcChannel.deleteTopic, (_event, id: unknown) =>
+    withDb((d) => deleteTopic(d, id)),
+  );
 
   ipcMain.handle(IpcChannel.listJournal, () => withDb(listJournal));
   ipcMain.handle(IpcChannel.saveJournalEntry, (_event, date: unknown, text: unknown) =>

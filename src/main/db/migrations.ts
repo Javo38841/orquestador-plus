@@ -248,6 +248,20 @@ export const migrations: Migration[] = [
       CREATE INDEX idx_snippet_tags_tag ON snippet_tags (tag_id);
     `,
   },
+  {
+    version: 14,
+    name: 'learning_topics',
+    up: `
+      CREATE TABLE topics (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        title      TEXT NOT NULL,
+        notes      TEXT NOT NULL DEFAULT '',
+        status     TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'done')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {
