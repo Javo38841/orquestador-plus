@@ -1,3 +1,5 @@
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
+import { of } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 import type { OrquestadorApi } from '../../../../shared/ipc';
@@ -27,6 +29,7 @@ const task = (id: number, extra: Partial<Task> = {}): Task => ({
 async function render(
   stored: Task[],
   overrides: Partial<Record<keyof OrquestadorApi, unknown>> = {},
+  queryParams: Record<string, string> = {},
 ) {
   const deleteTask = vi.fn(async () => true);
   const createTask = vi.fn(async (input): Promise<TaskResult> => ({
@@ -52,7 +55,10 @@ async function render(
         preloadLangs: true,
       }),
     ],
-    providers: [{ provide: DESKTOP_API, useValue: api }],
+    providers: [
+      { provide: DESKTOP_API, useValue: api },
+      { provide: ActivatedRoute, useValue: { queryParamMap: of(convertToParamMap(queryParams)) } },
+    ],
   }).compileComponents();
   const fixture = TestBed.createComponent(TasksPage);
   await fixture.whenStable();
@@ -67,6 +73,19 @@ async function render(
 }
 
 describe('TasksPage', () => {
+  it('CP-10-11: arriving with ?task=<id> highlights that task, even a completed one', async () => {
+    const { el, settle } = await render(
+      [task(1), task(2, { status: 'done', completedAt: '2026-03-02T10:00:00.000Z' })],
+      {},
+      { task: '2' },
+    );
+    await settle();
+
+    const marked = el.querySelectorAll('[data-highlighted="true"]');
+    expect(marked).toHaveLength(1);
+    expect(marked[0].textContent).toContain('Tarea 2');
+  });
+
   it('CP-02-08: shows the Tarea, Proyecto and Vence columns', async () => {
     const { el } = await render([task(1)]);
     const headers = el.querySelector('[data-testid="task-list"] > div')!.textContent!;

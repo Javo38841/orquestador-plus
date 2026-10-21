@@ -45,6 +45,16 @@
     "tooLong": "Máximo 500 caracteres",
     "failed": "No se pudo guardar la captura"
   },
+  "search": {
+    "title": "Búsqueda global",
+    "placeholder": "Buscar tareas y elementos de la bandeja",
+    "hint": "↑↓ para moverte · Enter para abrir · Esc para cerrar",
+    "empty": "Sin resultados",
+    "groups": {
+      "task": "Tareas",
+      "inbox": "Bandeja de entrada"
+    }
+  },
   "inbox": {
     "empty": "La bandeja está vacía.",
     "source": {
