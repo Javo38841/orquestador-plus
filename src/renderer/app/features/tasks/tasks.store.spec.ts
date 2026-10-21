@@ -15,6 +15,8 @@ const task = (id: number, status: Task['status'] = 'todo', title = `t${id}`): Ta
   tags: [],
   createdAt: '2026-03-01T10:00:00.000Z',
   completedAt: null,
+  seriesId: null,
+  recurrence: { kind: 'once' },
 });
 
 function setup(stored: Task[]) {
@@ -39,6 +41,7 @@ function setup(stored: Task[]) {
       task: { ...task(id), forToday },
     })),
     deleteTask: vi.fn(async () => true),
+    deleteSeries: vi.fn(async () => true),
   } as unknown as OrquestadorApi;
   TestBed.configureTestingModule({ providers: [{ provide: DESKTOP_API, useValue: api }] });
   return { store: TestBed.inject(TasksStore), api };
@@ -135,5 +138,52 @@ describe('TasksStore', () => {
     store.tagFilter.set('gone');
     await store.load();
     expect(store.tagFilter()).toBeNull();
+  });
+
+  it('CP-06-09: series are the open instances that carry a repeating rule', async () => {
+    const weekly = task(1);
+    weekly.seriesId = 7;
+    weekly.recurrence = { kind: 'weekly', weekday: 5 };
+    const finished = { ...weekly, id: 2, status: 'done' as const };
+    const { store } = setup([weekly, finished, task(3)]);
+    await store.load();
+    expect(store.series().map((t) => t.id)).toEqual([1]);
+
+    store.seriesKindFilter.set('daily');
+    expect(store.visibleSeries()).toEqual([]);
+    store.seriesKindFilter.set('weekly');
+    expect(store.visibleSeries().map((t) => t.id)).toEqual([1]);
+    store.seriesProjectFilter.set(99);
+    expect(store.visibleSeries()).toEqual([]);
+  });
+
+  it('CP-06-03: completing a series instance reloads the list to pick up the next one', async () => {
+    const instance = task(1);
+    instance.seriesId = 7;
+    instance.recurrence = { kind: 'daily' };
+    const { store, api } = setup([instance]);
+    await store.load();
+    await store.setDone(instance, true);
+    expect(api.setTaskStatus).toHaveBeenCalledWith(1, 'done');
+    expect(api.listTasks).toHaveBeenCalledTimes(2);
+  });
+
+  it('CP-06-11: removeSeries calls main and reloads', async () => {
+    const { store, api } = setup([]);
+    await store.removeSeries(7);
+    expect(api.deleteSeries).toHaveBeenCalledWith(7);
+    expect(api.listTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it('CP-06-12: rejects an incomplete rule before calling main', async () => {
+    const { store, api } = setup([]);
+    const error = await store.save({
+      title: 'x',
+      dueDate: '2026-03-06',
+      projectId: null,
+      recurrence: { kind: 'weekly', weekday: NaN },
+    });
+    expect(error).toBe('recurrence_weekday');
+    expect(api.createTask).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ import {
   type TaskInput,
   type TaskStatus,
 } from '../../../../shared/tasks';
+import { isSeriesRule, type RecurrenceKind } from '../../../../shared/recurrence';
 import { DESKTOP_API } from '../../core/desktop-api';
 
 @Injectable({ providedIn: 'root' })
@@ -30,6 +31,28 @@ export class TasksStore {
       (t) =>
         (this.showCompleted() || t.status !== 'done') && (tag === null || t.tags.includes(tag)),
     );
+  });
+
+  /** Project the "Series recurrentes" tab is filtered by, or null for all. */
+  readonly seriesProjectFilter = signal<number | null>(null);
+  /** Repetition type the "Series recurrentes" tab is filtered by, or null for all. */
+  readonly seriesKindFilter = signal<RecurrenceKind | null>(null);
+  /** One entry per series: its open instance, which carries the rule and next due date. */
+  readonly series = computed(() =>
+    this.taskList().filter(
+      (t) => t.seriesId !== null && t.status !== 'done' && isSeriesRule(t.recurrence),
+    ),
+  );
+  readonly visibleSeries = computed(() => {
+    const project = this.seriesProjectFilter();
+    const kind = this.seriesKindFilter();
+    return this.series()
+      .filter(
+        (t) =>
+          (project === null || t.projectId === project) &&
+          (kind === null || t.recurrence.kind === kind),
+      )
+      .sort((a, b) => (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999'));
   });
 
   async load(): Promise<void> {
@@ -64,13 +87,23 @@ export class TasksStore {
     await this.move(task, done ? 'done' : 'todo');
   }
 
+  /** Deletes a series and its open instance; completed instances stay as history. */
+  async removeSeries(seriesId: number): Promise<void> {
+    if (!this.api) return;
+    if (await this.api.deleteSeries(seriesId)) await this.load();
+  }
+
   /** Moves a task to another status (board columns); "done" completes it. */
   async move(task: Task, status: TaskStatus): Promise<void> {
     if (!this.api) return;
     const result = await this.api.setTaskStatus(task.id, status);
-    if (result.ok) {
-      this.taskList.update((list) => list.map((t) => (t.id === task.id ? result.task : t)));
+    if (!result.ok) return;
+    if (task.seriesId !== null) {
+      // Completing or reopening a series instance creates or drops other instances.
+      await this.load();
+      return;
     }
+    this.taskList.update((list) => list.map((t) => (t.id === task.id ? result.task : t)));
   }
 
   async setForToday(task: Task, forToday: boolean): Promise<void> {

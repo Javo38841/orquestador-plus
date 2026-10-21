@@ -7,6 +7,7 @@ import {
   createProject,
   createTask,
   deleteProject,
+  deleteSeries,
   deleteTask,
   listProjects,
   listTags,
@@ -58,6 +59,9 @@ export function registerIpcHandlers(db: Database.Database | null): void {
     withDb((d) => setTaskForToday(d, id, forToday)),
   );
   ipcMain.handle(IpcChannel.deleteTask, (_event, id: unknown) => withDb((d) => deleteTask(d, id)));
+  ipcMain.handle(IpcChannel.deleteSeries, (_event, id: unknown) =>
+    withDb((d) => deleteSeries(d, id)),
+  );
   ipcMain.handle(IpcChannel.listTags, () => withDb(listTags));
   ipcMain.handle(IpcChannel.listProjects, () => withDb(listProjects));
   ipcMain.handle(IpcChannel.createProject, (_event, name: unknown) =>

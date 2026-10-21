@@ -1,6 +1,14 @@
 import type Database from 'better-sqlite3';
 import {
+  fromRRule,
+  isSeriesRule,
+  nextDueDate,
+  toRRule,
+  type RecurrenceRule,
+} from '../../shared/recurrence';
+import {
   isTaskStatus,
+  localDate,
   validateProjectName,
   validateTaskInput,
   type Project,
@@ -21,11 +29,15 @@ interface TaskRow {
   for_today: number;
   created_at: string;
   completed_at: string | null;
+  series_id: number | null;
+  rrule: string | null;
 }
 
 const SELECT_TASK = `
-  SELECT t.id, t.title, t.status, t.due_date, t.project_id, p.name AS project_name, t.for_today, t.created_at, t.completed_at
-  FROM tasks t LEFT JOIN projects p ON p.id = t.project_id`;
+  SELECT t.id, t.title, t.status, t.due_date, t.project_id, p.name AS project_name, t.for_today, t.created_at, t.completed_at,
+         t.series_id, s.rrule
+  FROM tasks t LEFT JOIN projects p ON p.id = t.project_id
+  LEFT JOIN task_series s ON s.id = t.series_id`;
 
 function toTask(row: TaskRow, tags: string[] = []): Task {
   return {
@@ -39,6 +51,8 @@ function toTask(row: TaskRow, tags: string[] = []): Task {
     tags,
     createdAt: row.created_at,
     completedAt: row.completed_at,
+    seriesId: row.series_id,
+    recurrence: (row.rrule && fromRRule(row.rrule)) || { kind: 'once' },
   };
 }
 
@@ -102,6 +116,24 @@ function projectExists(db: Database.Database, id: number): boolean {
   return db.prepare('SELECT 1 FROM projects WHERE id = ?').get(id) !== undefined;
 }
 
+/** Stores the rule as a new series and returns its id. */
+function insertSeries(db: Database.Database, rule: RecurrenceRule, now: Date): number | null {
+  if (!isSeriesRule(rule)) return null;
+  const info = db
+    .prepare('INSERT INTO task_series (rrule, created_at) VALUES (?, ?)')
+    .run(toRRule(rule), now.toISOString());
+  return Number(info.lastInsertRowid);
+}
+
+/** Drops a series that has no open instance left (completed ones keep their history). */
+function pruneSeries(db: Database.Database, seriesId: number | null): void {
+  if (seriesId === null) return;
+  const open = db
+    .prepare("SELECT 1 FROM tasks WHERE series_id = ? AND status <> 'done'")
+    .get(seriesId);
+  if (!open) db.prepare('DELETE FROM task_series WHERE id = ?').run(seriesId);
+}
+
 /** Creates a task, and its project when the form names a new one, in one transaction. */
 export function createTask(
   db: Database.Database,
@@ -119,9 +151,15 @@ export function createTask(
     const projectId = resolveProject(db, value, now);
     const info = db
       .prepare(
-        "INSERT INTO tasks (title, status, due_date, project_id, created_at) VALUES (?, 'todo', ?, ?, ?)",
+        "INSERT INTO tasks (title, status, due_date, project_id, created_at, series_id) VALUES (?, 'todo', ?, ?, ?, ?)",
       )
-      .run(value.title, value.dueDate, projectId, now.toISOString());
+      .run(
+        value.title,
+        value.dueDate,
+        projectId,
+        now.toISOString(),
+        insertSeries(db, value.recurrence, now),
+      );
     const taskId = Number(info.lastInsertRowid);
     setTags(db, taskId, value.tags);
     return taskId;
@@ -137,7 +175,8 @@ export function updateTask(
   input: unknown,
   now: Date = new Date(),
 ): TaskResult {
-  if (!isId(id) || !getTask(db, id)) return { ok: false, error: 'not_found' };
+  const existing = isId(id) ? getTask(db, id) : null;
+  if (!existing) return { ok: false, error: 'not_found' };
   const checked = validateTaskInput(input);
   if (!checked.ok) return checked;
   const value = checked.value;
@@ -147,19 +186,67 @@ export function updateTask(
 
   db.transaction(() => {
     const projectId = resolveProject(db, value, now);
-    db.prepare('UPDATE tasks SET title = ?, due_date = ?, project_id = ? WHERE id = ?').run(
-      value.title,
-      value.dueDate,
-      projectId,
-      id,
-    );
-    setTags(db, id, value.tags);
+    // A new rule applies to the open instance and to the ones generated from now on;
+    // completed instances do not store a rule, so they are untouched.
+    let seriesId = existing.seriesId;
+    if (!isSeriesRule(value.recurrence)) {
+      seriesId = null;
+    } else if (seriesId === null) {
+      seriesId = insertSeries(db, value.recurrence, now);
+    } else {
+      db.prepare('UPDATE task_series SET rrule = ? WHERE id = ?').run(
+        toRRule(value.recurrence),
+        seriesId,
+      );
+    }
+    db.prepare(
+      'UPDATE tasks SET title = ?, due_date = ?, project_id = ?, series_id = ? WHERE id = ?',
+    ).run(value.title, value.dueDate, projectId, seriesId, existing.id);
+    setTags(db, existing.id, value.tags);
+    if (seriesId !== existing.seriesId) pruneSeries(db, existing.seriesId);
   })();
 
-  return { ok: true, task: getTask(db, id)! };
+  return { ok: true, task: getTask(db, existing.id)! };
 }
 
-/** Moves a task between columns. Entering "done" stamps `completed_at`; leaving it clears it. */
+/** Creates the next instance of the series from a just-completed one. */
+function spawnNextInstance(db: Database.Database, done: Task, now: Date): void {
+  if (done.seriesId === null || !isSeriesRule(done.recurrence)) return;
+  const open = db
+    .prepare("SELECT 1 FROM tasks WHERE series_id = ? AND status <> 'done'")
+    .get(done.seriesId);
+  if (open) return;
+  const due = nextDueDate(done.recurrence, done.dueDate, localDate(now));
+  const info = db
+    .prepare(
+      "INSERT INTO tasks (title, status, due_date, project_id, created_at, series_id) VALUES (?, 'todo', ?, ?, ?, ?)",
+    )
+    .run(done.title, due, done.projectId, now.toISOString(), done.seriesId);
+  setTags(db, Number(info.lastInsertRowid), done.tags);
+}
+
+/**
+ * Reopening an instance whose successor already exists must not leave two open instances:
+ * an untouched successor is dropped (completing again regenerates it); a successor already
+ * in progress wins and the reopened task leaves the series.
+ */
+function resolveReopened(db: Database.Database, reopened: Task): void {
+  if (reopened.seriesId === null) return;
+  const sibling = db
+    .prepare("SELECT id, status FROM tasks WHERE series_id = ? AND status <> 'done' AND id <> ?")
+    .get(reopened.seriesId, reopened.id) as { id: number; status: TaskStatus } | undefined;
+  if (!sibling) return;
+  if (sibling.status === 'todo') {
+    db.prepare('DELETE FROM tasks WHERE id = ?').run(sibling.id);
+  } else {
+    db.prepare('UPDATE tasks SET series_id = NULL WHERE id = ?').run(reopened.id);
+  }
+}
+
+/**
+ * Moves a task between columns. Entering "done" stamps `completed_at` and, for a series
+ * instance, creates the next one in the same transaction; leaving it clears the stamp.
+ */
 export function setTaskStatus(
   db: Database.Database,
   id: unknown,
@@ -171,12 +258,16 @@ export function setTaskStatus(
   if (!current) return { ok: false, error: 'not_found' };
   const completedAt =
     status !== 'done' ? null : current.status === 'done' ? current.completedAt : now.toISOString();
-  db.prepare('UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?').run(
-    status,
-    completedAt,
-    id,
-  );
-  return { ok: true, task: getTask(db, id as number)! };
+  db.transaction(() => {
+    db.prepare('UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?').run(
+      status,
+      completedAt,
+      current.id,
+    );
+    if (status === 'done' && current.status !== 'done') spawnNextInstance(db, current, now);
+    if (status !== 'done' && current.status === 'done') resolveReopened(db, current);
+  })();
+  return { ok: true, task: getTask(db, current.id)! };
 }
 
 /** Marks or unmarks a task as "para hoy". */
@@ -189,8 +280,25 @@ export function setTaskForToday(db: Database.Database, id: unknown, forToday: un
 
 /** Returns whether a task was deleted. */
 export function deleteTask(db: Database.Database, id: unknown): boolean {
-  if (!isId(id)) return false;
-  return db.prepare('DELETE FROM tasks WHERE id = ?').run(id).changes > 0;
+  const task = isId(id) ? getTask(db, id) : null;
+  if (!task) return false;
+  db.transaction(() => {
+    db.prepare('DELETE FROM tasks WHERE id = ?').run(task.id);
+    pruneSeries(db, task.seriesId);
+  })();
+  return true;
+}
+
+/**
+ * Deletes a series with its open instance; completed instances stay as history
+ * (their series link is cleared by ON DELETE SET NULL). Returns whether it existed.
+ */
+export function deleteSeries(db: Database.Database, seriesId: unknown): boolean {
+  if (!isId(seriesId)) return false;
+  return db.transaction(() => {
+    db.prepare("DELETE FROM tasks WHERE series_id = ? AND status <> 'done'").run(seriesId);
+    return db.prepare('DELETE FROM task_series WHERE id = ?').run(seriesId).changes > 0;
+  })();
 }
 
 /** Tasks, pending first, then by due date (undated last) and creation. */
