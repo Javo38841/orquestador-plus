@@ -1,7 +1,9 @@
-import { app, clipboard, ipcMain } from 'electron';
+import path from 'node:path';
+import { app, BrowserWindow, clipboard, dialog, ipcMain } from 'electron';
 import type Database from 'better-sqlite3';
 import { IpcChannel, type AppInfo } from '../../shared/ipc';
 import { CHANNEL } from '../channel';
+import { exportAll } from '../export/export';
 import { createBug, deleteBug, listBugs, setBugStatus, updateBug } from '../bugs/bugs';
 import { listJournal, saveJournalEntry } from '../journal/journal';
 import { captureItem, convertToTask, discardItem, listInbox } from '../inbox/inbox';
@@ -185,5 +187,27 @@ export function registerIpcHandlers(
   ipcMain.handle(IpcChannel.getRemindersEnabled, () => withDb(getRemindersEnabled));
   ipcMain.handle(IpcChannel.setRemindersEnabled, (_event, enabled: unknown) =>
     rearm(withDb((d) => setRemindersEnabled(d, enabled))),
+  );
+
+  // The payload is forwarded untouched: exportAll rejects anything but no argument.
+  ipcMain.handle(IpcChannel.exportAll, (event, payload?: unknown) =>
+    exportAll(
+      {
+        db,
+        wikiDir,
+        chooseFile: async (defaultName) => {
+          const options = {
+            defaultPath: path.join(app.getPath('documents'), defaultName),
+            filters: [{ name: 'ZIP', extensions: ['zip'] }],
+          };
+          const parent = BrowserWindow.fromWebContents(event.sender);
+          const { canceled, filePath } = parent
+            ? await dialog.showSaveDialog(parent, options)
+            : await dialog.showSaveDialog(options);
+          return canceled || !filePath ? null : filePath;
+        },
+      },
+      payload,
+    ),
   );
 }

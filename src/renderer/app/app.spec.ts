@@ -66,6 +66,7 @@ function fakeApi(overrides: Partial<AppInfo> = {}, bugs: Bug[] = []): Orquestado
     revokePortalLink: async () => false,
     getRemindersEnabled: async () => true,
     setRemindersEnabled: async (enabled: boolean) => enabled,
+    exportAll: async () => ({ ok: false as const, error: 'cancelled' as const }),
   };
 }
 
@@ -103,6 +104,7 @@ describe('App', () => {
       'Snippets',
       'Aprendizaje',
       'Portal de reportes',
+      'Ajustes',
     ]);
   });
 

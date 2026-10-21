@@ -9,6 +9,7 @@ import { JournalPage } from './features/journal/journal-page';
 import { SnippetsPage } from './features/snippets/snippets-page';
 import { LearningPage } from './features/learning/learning-page';
 import { PortalPage } from './features/portal/portal-page';
+import { SettingsPage } from './features/settings/settings-page';
 import { WikiPage } from './features/wiki/wiki-page';
 import { NAVIGATION } from './layout/navigation';
 
@@ -26,6 +27,7 @@ const sectionRoutes: Routes = NAVIGATION.flatMap((group) => group.items)
         'snippets',
         'learning',
         'portal',
+        'settings',
       ].includes(item.path),
   )
   .map((item) => ({
@@ -50,6 +52,7 @@ export const routes: Routes = [
   { path: 'snippets', component: SnippetsPage },
   { path: 'learning', component: LearningPage },
   { path: 'portal', component: PortalPage },
+  { path: 'settings', component: SettingsPage },
   ...sectionRoutes,
   { path: '**', redirectTo: 'today' },
 ];

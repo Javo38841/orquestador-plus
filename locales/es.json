@@ -22,7 +22,8 @@
     "journal": "Bitácora",
     "snippets": "Snippets",
     "learning": "Aprendizaje",
-    "portal": "Portal de reportes"
+    "portal": "Portal de reportes",
+    "settings": "Ajustes"
   },
   "pages": {
     "today": "Lo que vence hoy, lo atrasado y lo que marcaste para hoy.",
@@ -35,6 +36,7 @@
     "snippets": "Bloques de código y comandos listos para copiar.",
     "learning": "Temas de aprendizaje y su avance.",
     "portal": "Un formulario temporal para que otras personas te reporten problemas.",
+    "settings": "Preferencias de la aplicación y exportación de tus datos.",
     "comingSoon": "Esta sección todavía no está construida."
   },
   "capture": {
@@ -455,5 +457,22 @@
         "too_large": "El envío es demasiado grande."
       }
     }
+  },
+  "export": {
+    "title": "Exportar",
+    "intro": "Llévate toda tu información en formatos abiertos, sin depender de la aplicación.",
+    "included": {
+      "tasks": "Tareas y sus repeticiones",
+      "projects": "Proyectos",
+      "tags": "Etiquetas",
+      "inbox": "Bandeja de entrada",
+      "wiki": "Notas de la wiki (archivos Markdown)"
+    },
+    "format": "Se guarda un archivo ZIP con un JSON y un CSV por cada tipo de dato, y la carpeta wiki con tus notas.",
+    "button": "Exportar todo",
+    "running": "Exportando…",
+    "done": "Exportación guardada en:",
+    "cancelled": "Exportación cancelada: no se guardó ningún archivo.",
+    "failed": "No se pudo guardar la exportación. No quedó ningún archivo incompleto."
   }
 }
