@@ -335,6 +335,40 @@
       "notFound": "El snippet ya no existe"
     }
   },
+  "learning": {
+    "new": "Nuevo tema",
+    "empty": "Todavía no hay temas de aprendizaje.",
+    "createFirst": "Crear el primer tema",
+    "emptyFilter": "No hay temas en este filtro.",
+    "filters": {
+      "all": "Todos",
+      "todo": "Por empezar",
+      "in_progress": "En curso",
+      "done": "Completado"
+    },
+    "status": {
+      "todo": "Por empezar",
+      "in_progress": "En curso",
+      "done": "Completado"
+    },
+    "fields": {
+      "title": "Tema",
+      "notes": "Notas"
+    },
+    "statusLabel": "Avance",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "confirmYes": "Sí, eliminar",
+    "confirmNo": "No",
+    "errors": {
+      "emptyTitle": "Escribe el nombre del tema",
+      "tooLong": "El título o las notas son demasiado largos",
+      "invalid": "El tema no es válido",
+      "notFound": "El tema ya no existe"
+    }
+  },
   "journal": {
     "today": "Hoy",
     "placeholder": "¿Qué hiciste, qué decidiste, qué te bloquea?",
