@@ -16,8 +16,9 @@ import {
   setTaskStatus,
   updateTask,
 } from '../tasks/tasks';
+import { createNote, deleteNote, getNote, listNotes, updateNote, type Wiki } from '../wiki/wiki';
 
-export function registerIpcHandlers(db: Database.Database | null): void {
+export function registerIpcHandlers(db: Database.Database | null, wikiDir: string): void {
   ipcMain.handle(IpcChannel.getAppInfo, (): AppInfo => ({
     name: app.getName(),
     version: app.getVersion(),
@@ -69,5 +70,21 @@ export function registerIpcHandlers(db: Database.Database | null): void {
   );
   ipcMain.handle(IpcChannel.deleteProject, (_event, id: unknown) =>
     withDb((d) => deleteProject(d, id)),
+  );
+
+  const withWiki = <T>(run: (wiki: Wiki) => T): T => {
+    if (!db) throw new Error('Database not available');
+    return run({ db, dir: wikiDir });
+  };
+  ipcMain.handle(IpcChannel.listNotes, () => withWiki(listNotes));
+  ipcMain.handle(IpcChannel.getNote, (_event, slug: unknown) => withWiki((w) => getNote(w, slug)));
+  ipcMain.handle(IpcChannel.createNote, (_event, input: unknown) =>
+    withWiki((w) => createNote(w, input)),
+  );
+  ipcMain.handle(IpcChannel.updateNote, (_event, slug: unknown, input: unknown) =>
+    withWiki((w) => updateNote(w, slug, input)),
+  );
+  ipcMain.handle(IpcChannel.deleteNote, (_event, slug: unknown) =>
+    withWiki((w) => deleteNote(w, slug)),
   );
 }

@@ -191,5 +191,33 @@
       "monthDay": "El día del mes debe estar entre 1 y 31",
       "dueRequired": "Una tarea que se repite necesita fecha de inicio"
     }
+  },
+  "wiki": {
+    "new": "Nueva nota",
+    "empty": "Todavía no hay notas.",
+    "pick": "Elige una nota o crea una nueva.",
+    "title": "Título",
+    "content": "Contenido (Markdown, enlaza con [[otra nota]])",
+    "preview": "Vista previa",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "confirmDelete": "Confirmar eliminación",
+    "updated": "Actualizada el",
+    "backlinks": "Enlaces entrantes",
+    "noBacklinks": "Ninguna nota enlaza a esta.",
+    "pendingLink": "La nota todavía no existe",
+    "confirmDiscard": "Tienes cambios sin guardar. ¿Descartarlos?",
+    "discard": "Descartar",
+    "keepEditing": "Seguir editando",
+    "errors": {
+      "empty": "El título no puede estar vacío",
+      "tooLong": "El título o el contenido es demasiado largo",
+      "invalid": "La nota no es válida",
+      "duplicate": "Ya existe una nota con ese título o nombre de archivo",
+      "notFound": "La nota ya no existe",
+      "io": "No se pudo guardar el archivo de la nota"
+    }
   }
 }

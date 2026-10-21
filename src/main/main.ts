@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 import { appNameFor, CHANNEL, resolveDataDir } from './channel';
 import { openDatabase } from './db/database';
 import { registerIpcHandlers } from './ipc/register';
+import { rebuildIndex } from './wiki/wiki';
 import { registerAppScheme, serveRenderer } from './protocol';
 import { createMainWindow } from './window';
 
@@ -32,7 +33,10 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(() => {
     Menu.setApplicationMenu(null);
     db = openDatabase(dataDir);
-    registerIpcHandlers(db);
+    const wikiDir = path.join(dataDir, 'wiki');
+    // Files are the source of truth (ADR-001): the index is rebuilt on every start.
+    rebuildIndex({ db, dir: wikiDir });
+    registerIpcHandlers(db, wikiDir);
     serveRenderer(path.join(__dirname, '../renderer/browser'));
     createMainWindow(appName);
 
