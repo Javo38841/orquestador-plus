@@ -14,6 +14,8 @@ const ERROR_KEYS: Record<TaskError, string> = {
   invalid_date: 'tasks.errors.invalidDate',
   invalid_project: 'tasks.errors.invalidProject',
   not_found: 'tasks.errors.notFound',
+  invalid_reminder: 'tasks.errors.invalidReminder',
+  reminder_series: 'tasks.errors.reminderSeries',
   ...TAG_ERROR_KEYS,
   ...RECURRENCE_ERROR_KEYS,
 };

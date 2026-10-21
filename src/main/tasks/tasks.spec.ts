@@ -483,4 +483,79 @@ describe('recurring tasks (RF-06)', () => {
   it('uses the local date for the overdue rule', () => {
     expect(localDate(noon('2026-03-10'))).toBe('2026-03-10');
   });
+
+  it('CP-18-01: a reminder assigned to a task is stored and returned when reading it', () => {
+    const task = make('Sin aviso');
+    expect(task.reminderAt).toBeNull();
+
+    const updated = updateTask(db, task.id, {
+      title: 'Sin aviso',
+      reminderAt: '2026-03-10T09:00',
+    });
+
+    expect(updated).toMatchObject({ ok: true, task: { reminderAt: '2026-03-10T09:00' } });
+    expect(listTasks(db)[0]).toMatchObject({
+      reminderAt: '2026-03-10T09:00',
+      reminderNotifiedAt: null,
+    });
+  });
+
+  it('CP-18-02: an invalid reminder is rejected on create and update and nothing is written', () => {
+    const task = make('Intacta', { reminderAt: '2026-03-10T09:00' });
+    const invalid = [
+      '2026-13-10T09:00',
+      '2026-02-30T09:00',
+      '2026-03-10T25:00',
+      '2026-03-10T09:61',
+      '2026-03-10 09:00',
+      '09:00',
+      'mañana',
+      42,
+      {},
+    ];
+
+    for (const reminderAt of invalid) {
+      expect(createTask(db, { title: 'Nueva', reminderAt })).toEqual({
+        ok: false,
+        error: 'invalid_reminder',
+      });
+      expect(updateTask(db, task.id, { title: 'Cambiada', reminderAt })).toEqual({
+        ok: false,
+        error: 'invalid_reminder',
+      });
+    }
+    expect(listTasks(db)).toHaveLength(1);
+    expect(listTasks(db)[0]).toMatchObject({ title: 'Intacta', reminderAt: '2026-03-10T09:00' });
+  });
+
+  it('rejects a reminder on a recurring task', () => {
+    expect(
+      createTask(db, {
+        title: 'Serie',
+        dueDate: '2026-03-10',
+        recurrence: { kind: 'daily' },
+        reminderAt: '2026-03-10T09:00',
+      }),
+    ).toEqual({ ok: false, error: 'reminder_series' });
+  });
+
+  it('re-arms the reminder only when its time changes', () => {
+    const task = make('Aviso', { reminderAt: '2026-03-10T09:00' });
+    db.prepare('UPDATE tasks SET reminder_notified_at = ? WHERE id = ?').run(
+      '2026-03-10T12:00:00.000Z',
+      task.id,
+    );
+
+    const renamed = updateTask(db, task.id, {
+      title: 'Renombrada',
+      reminderAt: '2026-03-10T09:00',
+    });
+    expect(renamed).toMatchObject({
+      ok: true,
+      task: { reminderNotifiedAt: '2026-03-10T12:00:00.000Z' },
+    });
+
+    const moved = updateTask(db, task.id, { title: 'Renombrada', reminderAt: '2026-03-11T09:00' });
+    expect(moved).toMatchObject({ ok: true, task: { reminderNotifiedAt: null } });
+  });
 });

@@ -31,11 +31,13 @@ interface TaskRow {
   completed_at: string | null;
   series_id: number | null;
   rrule: string | null;
+  reminder_at: string | null;
+  reminder_notified_at: string | null;
 }
 
 const SELECT_TASK = `
   SELECT t.id, t.title, t.status, t.due_date, t.project_id, p.name AS project_name, t.for_today, t.created_at, t.completed_at,
-         t.series_id, s.rrule
+         t.series_id, s.rrule, t.reminder_at, t.reminder_notified_at
   FROM tasks t LEFT JOIN projects p ON p.id = t.project_id
   LEFT JOIN task_series s ON s.id = t.series_id`;
 
@@ -53,6 +55,8 @@ function toTask(row: TaskRow, tags: string[] = []): Task {
     completedAt: row.completed_at,
     seriesId: row.series_id,
     recurrence: (row.rrule && fromRRule(row.rrule)) || { kind: 'once' },
+    reminderAt: row.reminder_at,
+    reminderNotifiedAt: row.reminder_notified_at,
   };
 }
 
@@ -151,7 +155,7 @@ export function createTask(
     const projectId = resolveProject(db, value, now);
     const info = db
       .prepare(
-        "INSERT INTO tasks (title, status, due_date, project_id, created_at, series_id) VALUES (?, 'todo', ?, ?, ?, ?)",
+        "INSERT INTO tasks (title, status, due_date, project_id, created_at, series_id, reminder_at) VALUES (?, 'todo', ?, ?, ?, ?, ?)",
       )
       .run(
         value.title,
@@ -159,6 +163,7 @@ export function createTask(
         projectId,
         now.toISOString(),
         insertSeries(db, value.recurrence, now),
+        value.reminderAt,
       );
     const taskId = Number(info.lastInsertRowid);
     setTags(db, taskId, value.tags);
@@ -168,7 +173,7 @@ export function createTask(
   return { ok: true, task: getTask(db, id)! };
 }
 
-/** Edits title, due date and project of an existing task. */
+/** Edits title, due date, project, tags, repetition and reminder of an existing task. */
 export function updateTask(
   db: Database.Database,
   id: unknown,
@@ -199,9 +204,22 @@ export function updateTask(
         seriesId,
       );
     }
+    // A changed reminder is armed again; an untouched one keeps its "already notified" stamp.
+    const notifiedAt =
+      value.reminderAt !== null && value.reminderAt === existing.reminderAt
+        ? existing.reminderNotifiedAt
+        : null;
     db.prepare(
-      'UPDATE tasks SET title = ?, due_date = ?, project_id = ?, series_id = ? WHERE id = ?',
-    ).run(value.title, value.dueDate, projectId, seriesId, existing.id);
+      'UPDATE tasks SET title = ?, due_date = ?, project_id = ?, series_id = ?, reminder_at = ?, reminder_notified_at = ? WHERE id = ?',
+    ).run(
+      value.title,
+      value.dueDate,
+      projectId,
+      seriesId,
+      value.reminderAt,
+      notifiedAt,
+      existing.id,
+    );
     setTags(db, existing.id, value.tags);
     if (seriesId !== existing.seriesId) pruneSeries(db, existing.seriesId);
   })();

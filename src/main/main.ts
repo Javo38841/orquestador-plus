@@ -1,9 +1,10 @@
 import path from 'node:path';
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, Menu, Notification } from 'electron';
 import type Database from 'better-sqlite3';
 import { appNameFor, CHANNEL, resolveDataDir } from './channel';
 import { openDatabase } from './db/database';
 import { registerIpcHandlers } from './ipc/register';
+import { createReminderScheduler, type ReminderScheduler } from './reminders/scheduler';
 import { rebuildIndex } from './wiki/wiki';
 import { registerAppScheme, serveRenderer } from './protocol';
 import { createMainWindow } from './window';
@@ -18,6 +19,9 @@ app.setPath('userData', dataDir);
 registerAppScheme();
 
 let db: Database.Database | null = null;
+let reminders: ReminderScheduler | null = null;
+// Notifications must stay referenced until shown or they may be garbage collected.
+const shownNotifications = new Set<Notification>();
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -36,9 +40,21 @@ if (!app.requestSingleInstanceLock()) {
     const wikiDir = path.join(dataDir, 'wiki');
     // Files are the source of truth (ADR-001): the index is rebuilt on every start.
     rebuildIndex({ db, dir: wikiDir });
-    registerIpcHandlers(db, wikiDir);
+    reminders = createReminderScheduler({
+      db,
+      notify: (content) => {
+        // Where the system has no notification service, show() does nothing.
+        const notification = new Notification(content);
+        shownNotifications.add(notification);
+        notification.on('close', () => shownNotifications.delete(notification));
+        notification.show();
+      },
+    });
+    registerIpcHandlers(db, wikiDir, reminders);
     serveRenderer(path.join(__dirname, '../renderer/browser'));
     createMainWindow(appName);
+    // After the window exists, so overdue reminders from while the app was closed show now.
+    reminders.start();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createMainWindow(appName);
@@ -51,5 +67,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+  reminders?.stop();
   db?.close();
 });

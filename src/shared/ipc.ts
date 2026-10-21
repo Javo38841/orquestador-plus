@@ -38,6 +38,8 @@ export const IpcChannel = {
   deleteBug: 'bugs:delete',
   listJournal: 'journal:list',
   saveJournalEntry: 'journal:save',
+  getRemindersEnabled: 'settings:get-reminders-enabled',
+  setRemindersEnabled: 'settings:set-reminders-enabled',
 } as const;
 
 export type ReleaseChannel = 'dev' | 'prod';
@@ -89,4 +91,7 @@ export interface OrquestadorApi {
   listJournal(): Promise<JournalEntry[]>;
   /** Upserts the day's entry; a blank text deletes it. */
   saveJournalEntry(date: string, text: string): Promise<JournalResult>;
+  /** Whether task reminders show a notification (RF-18). */
+  getRemindersEnabled(): Promise<boolean>;
+  setRemindersEnabled(enabled: boolean): Promise<boolean>;
 }

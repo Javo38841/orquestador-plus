@@ -128,7 +128,9 @@
       "newProject": "Crear proyecto nuevo…",
       "newProjectName": "Nombre del proyecto",
       "save": "Guardar",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "reminder": "Recordatorio",
+      "clearReminder": "Quitar recordatorio"
     },
     "forToday": "Para hoy",
     "edit": "Editar",
@@ -143,12 +145,16 @@
       "invalidDate": "La fecha no es válida",
       "invalidProject": "El proyecto no es válido",
       "notFound": "La tarea ya no existe",
-      "failed": "No se pudo guardar la tarea"
+      "failed": "No se pudo guardar la tarea",
+      "invalidReminder": "La fecha u hora del recordatorio no es válida",
+      "reminderSeries": "Las tareas que se repiten no admiten recordatorio"
     },
     "tabs": {
       "tasks": "Tareas",
       "series": "Series recurrentes"
-    }
+    },
+    "reminderChip": "Recordatorio {{when}}",
+    "reminderDone": "Notificado · {{when}}"
   },
   "recurrence": {
     "label": "Repetición",
@@ -277,5 +283,12 @@
       "invalid": "La entrada no es válida",
       "tooLong": "La entrada es demasiado larga"
     }
+  },
+  "reminders": {
+    "notification": {
+      "body": "Recordatorio de tarea · {{time}}",
+      "late": "Recordatorio atrasado · era el {{date}} a las {{time}}"
+    },
+    "enabled": "Avisarme de los recordatorios de tareas"
   }
 }
