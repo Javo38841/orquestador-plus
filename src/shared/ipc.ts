@@ -1,6 +1,7 @@
 import type { Bug, BugInput, BugResult, BugStatus } from './bugs';
 import type { JournalEntry, JournalResult } from './journal';
 import type { CaptureResult, InboxItem } from './inbox';
+import type { SearchResult } from './search';
 import type { NoteInput, NoteResult, NoteSummary } from './wiki';
 import type { Project, ProjectResult, Task, TaskInput, TaskResult, TaskStatus } from './tasks';
 
@@ -38,6 +39,7 @@ export const IpcChannel = {
   deleteBug: 'bugs:delete',
   listJournal: 'journal:list',
   saveJournalEntry: 'journal:save',
+  search: 'search:query',
   getRemindersEnabled: 'settings:get-reminders-enabled',
   setRemindersEnabled: 'settings:set-reminders-enabled',
 } as const;
@@ -91,6 +93,8 @@ export interface OrquestadorApi {
   listJournal(): Promise<JournalEntry[]>;
   /** Upserts the day's entry; a blank text deletes it. */
   saveJournalEntry(date: string, text: string): Promise<JournalResult>;
+  /** Global search over tasks and inbox items, at most 50 results by relevance (RF-10). */
+  search(text: string): Promise<SearchResult[]>;
   /** Whether task reminders show a notification (RF-18). */
   getRemindersEnabled(): Promise<boolean>;
   setRemindersEnabled(enabled: boolean): Promise<boolean>;

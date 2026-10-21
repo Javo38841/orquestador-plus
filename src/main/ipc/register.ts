@@ -18,6 +18,7 @@ import {
   setTaskStatus,
   updateTask,
 } from '../tasks/tasks';
+import { search } from '../search/search';
 import type { ReminderScheduler } from '../reminders/scheduler';
 import { getRemindersEnabled, setRemindersEnabled } from '../settings/settings';
 import { createNote, deleteNote, getNote, listNotes, updateNote, type Wiki } from '../wiki/wiki';
@@ -119,6 +120,8 @@ export function registerIpcHandlers(
   ipcMain.handle(IpcChannel.saveJournalEntry, (_event, date: unknown, text: unknown) =>
     withDb((d) => saveJournalEntry(d, date, text)),
   );
+
+  ipcMain.handle(IpcChannel.search, (_event, text: unknown) => withDb((d) => search(d, text)));
 
   ipcMain.handle(IpcChannel.getRemindersEnabled, () => withDb(getRemindersEnabled));
   ipcMain.handle(IpcChannel.setRemindersEnabled, (_event, enabled: unknown) =>
