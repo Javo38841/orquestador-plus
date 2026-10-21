@@ -113,3 +113,21 @@ test('CP-07-04: filtering Tareas by #infra hides tasks without it until the filt
   await page.getByTestId('tag-filter-all').click();
   await expect(page.getByTestId('task-row')).toHaveCount(2);
 });
+
+test('CP-06-01: a weekly Friday task shows its repetition chip and appears in Series recurrentes', async () => {
+  const { page } = launched;
+  await page.getByTestId('new-task').click();
+  await page.getByTestId('task-title').fill('Revisar backups');
+  await page.getByTestId('task-due').fill('2999-01-04');
+  await page.getByTestId('recurrence-kind').selectOption('weekly');
+  await page.getByTestId('recurrence-weekday').selectOption('5');
+  await page.getByTestId('task-save').click();
+
+  const row = page.getByTestId('task-row').filter({ hasText: 'Revisar backups' });
+  await expect(row.getByTestId('task-repeat-chip')).toHaveText('Semanal · viernes');
+
+  await page.getByTestId('tab-series').click();
+  const series = page.getByTestId('series-row').filter({ hasText: 'Revisar backups' });
+  await expect(series).toBeVisible();
+  await expect(series.getByTestId('series-rule')).toHaveText('Semanal · viernes');
+});

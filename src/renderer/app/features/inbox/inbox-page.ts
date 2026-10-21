@@ -2,6 +2,7 @@ import { Component, computed, inject, OnInit, signal, viewChild } from '@angular
 import { TranslocoPipe } from '@jsverse/transloco';
 import type { InboxItem } from '../../../../shared/inbox';
 import type { TaskError } from '../../../../shared/tasks';
+import { RECURRENCE_ERROR_KEYS } from '../recurrence/recurrence-editor';
 import { TAG_ERROR_KEYS, TagsEditor } from '../tags/tags-editor';
 import { TasksStore } from '../tasks/tasks.store';
 import { InboxStore } from './inbox.store';
@@ -14,6 +15,7 @@ const ERROR_KEYS: Record<TaskError, string> = {
   invalid_project: 'tasks.errors.invalidProject',
   not_found: 'tasks.errors.notFound',
   ...TAG_ERROR_KEYS,
+  ...RECURRENCE_ERROR_KEYS,
 };
 
 const NEW_PROJECT = 'new';

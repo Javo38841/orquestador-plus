@@ -17,6 +17,8 @@ const task = (id: number, extra: Partial<Task> = {}): Task => ({
   tags: [],
   createdAt: '2026-03-01T10:00:00.000Z',
   completedAt: null,
+  seriesId: null,
+  recurrence: { kind: 'once' },
   ...extra,
 });
 
@@ -154,6 +156,7 @@ describe('TasksPage', () => {
       projectId: null,
       newProjectName: null,
       tags: [],
+      recurrence: { kind: 'once' },
     });
     expect(q('task-form')).toBeNull();
   });
@@ -286,5 +289,71 @@ describe('TasksPage', () => {
     await settle();
     expect(el.querySelectorAll('[data-testid="tag-chip"]')).toHaveLength(1);
     expect(q('tag-suggestions')).toBeNull();
+  });
+
+  it('CP-06-01: a repeating task shows the "Semanal · viernes" chip and the tab lists its series', async () => {
+    const weekly = task(1, {
+      title: 'Revisar backups',
+      dueDate: '2999-01-04',
+      seriesId: 3,
+      recurrence: { kind: 'weekly', weekday: 5 },
+    });
+    const { el, q, settle } = await render([weekly, task(2)]);
+    expect(el.querySelectorAll('[data-testid="task-repeat-chip"]')).toHaveLength(1);
+    expect(q('task-repeat-chip')!.textContent).toContain('Semanal · viernes');
+
+    q('tab-series')!.click();
+    await settle();
+    expect(el.querySelectorAll('[data-testid="series-row"]')).toHaveLength(1);
+    expect(el.textContent).toContain('Semanal · viernes');
+  });
+
+  it('CP-06-12: a weekly rule without day is rejected in the form with a Spanish message', async () => {
+    const { q, settle, createTask } = await render([]);
+    q('new-task')!.click();
+    await settle();
+    const title = q<HTMLInputElement>('task-title')!;
+    title.value = 'Revisar backups';
+    title.dispatchEvent(new Event('input'));
+    const kind = q<HTMLSelectElement>('recurrence-kind')!;
+    kind.value = 'weekly';
+    kind.dispatchEvent(new Event('change'));
+    await settle();
+    q('task-save')!.click();
+    await settle();
+    expect(createTask).not.toHaveBeenCalled();
+    expect(q('task-error')!.textContent).toContain('Elige el día de la semana');
+  });
+
+  it('CP-06-12: a repeating task without start date is rejected with a clear message', async () => {
+    const { q, settle, createTask } = await render([]);
+    q('new-task')!.click();
+    await settle();
+    const title = q<HTMLInputElement>('task-title')!;
+    title.value = 'Diaria';
+    title.dispatchEvent(new Event('input'));
+    const kind = q<HTMLSelectElement>('recurrence-kind')!;
+    kind.value = 'daily';
+    kind.dispatchEvent(new Event('change'));
+    await settle();
+    q('task-save')!.click();
+    await settle();
+    expect(createTask).not.toHaveBeenCalled();
+    expect(q('task-error')!.textContent).toContain('fecha de inicio');
+  });
+
+  it('CP-06-10: editing a series from the tab opens the form with its current rule', async () => {
+    const weekly = task(1, {
+      dueDate: '2999-01-04',
+      seriesId: 3,
+      recurrence: { kind: 'weekly', weekday: 5 },
+    });
+    const { q, settle } = await render([weekly]);
+    q('tab-series')!.click();
+    await settle();
+    q('series-edit')!.click();
+    await settle();
+    expect(q<HTMLSelectElement>('recurrence-kind')!.value).toBe('weekly');
+    expect(q<HTMLSelectElement>('recurrence-weekday')!.value).toBe('5');
   });
 });

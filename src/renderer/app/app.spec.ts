@@ -33,6 +33,7 @@ function fakeApi(overrides: Partial<AppInfo> = {}): OrquestadorApi {
     listProjects: async () => [],
     createProject: async () => ({ ok: false, error: 'empty' }),
     deleteProject: async () => false,
+    deleteSeries: async () => false,
   };
 }
 
