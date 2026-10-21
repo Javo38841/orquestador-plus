@@ -21,10 +21,11 @@ public.
 - Two identities are required because GitHub does not let a PR author approve their
   own PR, and PRs opened with the default `GITHUB_TOKEN` do not trigger other workflows.
 - Flow: `idea` label → planner → `por-aprobar` → owner adds `agente` → dev opens PR →
-  CI (Linux + Windows) → reviewer approves and enables auto-merge, or requests changes
-  (max 2 rounds, then `necesita-humano`).
-- Rulesets: `develop` requires both CI checks and one approval. `main` requires both
-  checks and only accepts PRs from `develop` or `hotfix/*`.
+  CI (Linux; Windows only on PRs to `main`) → reviewer approves and merges, or
+  requests changes (max 3 rounds, then `necesita-humano`).
+- Rulesets: `develop` requires the `Linux` check and one approval. `main` requires
+  `Linux`, `Windows` and `Source branch`, so it only accepts PRs from `develop` or
+  `hotfix/*`.
 - No self-hosted runner: public repositories get unlimited GitHub-hosted minutes, and
   a self-hosted runner on a public repo would let fork PRs run code on the homelab.
 
