@@ -53,7 +53,7 @@ jobs:
           npx electron-builder --config electron-builder.dev.yml \
             -c.extraMetadata.version="${base}-dev.${{ github.run_number }}"
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: dev-${{ matrix.label }}
           path: |
