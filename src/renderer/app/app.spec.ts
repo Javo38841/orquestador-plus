@@ -46,6 +46,8 @@ function fakeApi(overrides: Partial<AppInfo> = {}, bugs: Bug[] = []): Orquestado
     updateBug: async () => ({ ok: false, error: 'not_found' }),
     setBugStatus: async () => ({ ok: false, error: 'not_found' }),
     deleteBug: async () => false,
+    listJournal: async () => [],
+    saveJournalEntry: async () => ({ ok: true, entry: null }),
   };
 }
 
