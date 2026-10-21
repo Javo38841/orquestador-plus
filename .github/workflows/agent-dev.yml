@@ -8,11 +8,6 @@ on:
   pull_request_review:
     types: [submitted]
 
-# One dev run at a time: stories touch the same files.
-concurrency:
-  group: agent-dev
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
@@ -30,6 +25,11 @@ jobs:
       github.event_name == 'issues' &&
       github.event.label.name == 'agente' &&
       (github.actor == 'Javo38841' || github.actor == 'orquestador-review-javo[bot]')
+    # One dev job at a time (stories touch the same files). Declared per job so
+    # events that skip both jobs never wait in, or cancel, this queue.
+    concurrency:
+      group: agent-dev
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 150
     env:
@@ -117,6 +117,9 @@ jobs:
       github.event.review.state == 'changes_requested' &&
       github.event.review.user.login == 'orquestador-review-javo[bot]' &&
       github.event.pull_request.user.login == 'orquestador-dev-javo[bot]'
+    concurrency:
+      group: agent-dev
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
