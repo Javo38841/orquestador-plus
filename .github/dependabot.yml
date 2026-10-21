@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      angular:
+        patterns: ['@angular/*', '@angular-devkit/*', 'angular-eslint']
+      electron:
+        patterns: ['electron', 'electron-builder']
+      lint-and-test:
+        patterns:
+          ['eslint', '@eslint/*', 'typescript-eslint', 'vitest', '@playwright/test', 'prettier']
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly

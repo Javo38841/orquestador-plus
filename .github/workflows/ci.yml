@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    # Job names are the required status checks in the rulesets: "Linux" and "Windows".
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: Linux
+          - os: windows-latest
+            label: Windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No real .env files in git
+        shell: bash
+        run: |
+          if git ls-files | grep -E '(^|/)\.env' | grep -v '\.env\.example$'; then
+            echo "::error::A real .env file is versioned (see above). Remove it and add it to .gitignore."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit tests (main process)
+        run: npm run test:main
+
+      - name: Unit tests (renderer)
+        run: npm run test:renderer
+
+      - name: Build
+        run: npm run build
+
+      # Proves better-sqlite3 rebuilds for Electron and the app packages on this OS.
+      - name: Package (unpacked Dev build)
+        run: npm run package:dir
+
+      - name: E2E smoke tests (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum npm run e2e
+
+      - name: E2E smoke tests (Windows)
+        if: runner.os == 'Windows'
+        run: npm run e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.label }}
+          path: playwright-report/
+          retention-days: 7
+
+  source-branch:
+    # Required only by the main ruleset: production only accepts develop or hotfix/*.
+    name: Source branch
+    if: github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only develop or hotfix/* can target main
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$HEAD_REF" in
+            develop|hotfix/*) echo "OK: $HEAD_REF -> main" ;;
+            *) echo "::error::main only accepts PRs from develop or hotfix/*, not '$HEAD_REF'."; exit 1 ;;
+          esac
