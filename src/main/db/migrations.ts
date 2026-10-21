@@ -179,6 +179,15 @@ export const migrations: Migration[] = [
       ) STRICT;
     `,
   },
+  {
+    version: 11,
+    name: 'task_reminders',
+    // reminder_at is a local `YYYY-MM-DDTHH:mm[:ss]`; reminder_notified_at is the UTC instant it fired.
+    up: `
+      ALTER TABLE tasks ADD COLUMN reminder_at TEXT;
+      ALTER TABLE tasks ADD COLUMN reminder_notified_at TEXT;
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {

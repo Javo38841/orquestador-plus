@@ -18,9 +18,15 @@ import {
   setTaskStatus,
   updateTask,
 } from '../tasks/tasks';
+import type { ReminderScheduler } from '../reminders/scheduler';
+import { getRemindersEnabled, setRemindersEnabled } from '../settings/settings';
 import { createNote, deleteNote, getNote, listNotes, updateNote, type Wiki } from '../wiki/wiki';
 
-export function registerIpcHandlers(db: Database.Database | null, wikiDir: string): void {
+export function registerIpcHandlers(
+  db: Database.Database | null,
+  wikiDir: string,
+  reminders: Pick<ReminderScheduler, 'refresh'> = { refresh: () => undefined },
+): void {
   ipcMain.handle(IpcChannel.getAppInfo, (): AppInfo => ({
     name: app.getName(),
     version: app.getVersion(),
@@ -49,21 +55,28 @@ export function registerIpcHandlers(db: Database.Database | null, wikiDir: strin
     withDb((d) => discardItem(d, id)),
   );
   ipcMain.handle(IpcChannel.listTasks, () => withDb(listTasks));
+  // Anything that can change a task's reminder re-arms the scheduler's single timer.
+  const rearm = <T>(result: T): T => {
+    reminders.refresh();
+    return result;
+  };
   ipcMain.handle(IpcChannel.createTask, (_event, input: unknown) =>
-    withDb((d) => createTask(d, input)),
+    rearm(withDb((d) => createTask(d, input))),
   );
   ipcMain.handle(IpcChannel.updateTask, (_event, id: unknown, input: unknown) =>
-    withDb((d) => updateTask(d, id, input)),
+    rearm(withDb((d) => updateTask(d, id, input))),
   );
   ipcMain.handle(IpcChannel.setTaskStatus, (_event, id: unknown, status: unknown) =>
-    withDb((d) => setTaskStatus(d, id, status)),
+    rearm(withDb((d) => setTaskStatus(d, id, status))),
   );
   ipcMain.handle(IpcChannel.setTaskForToday, (_event, id: unknown, forToday: unknown) =>
     withDb((d) => setTaskForToday(d, id, forToday)),
   );
-  ipcMain.handle(IpcChannel.deleteTask, (_event, id: unknown) => withDb((d) => deleteTask(d, id)));
+  ipcMain.handle(IpcChannel.deleteTask, (_event, id: unknown) =>
+    rearm(withDb((d) => deleteTask(d, id))),
+  );
   ipcMain.handle(IpcChannel.deleteSeries, (_event, id: unknown) =>
-    withDb((d) => deleteSeries(d, id)),
+    rearm(withDb((d) => deleteSeries(d, id))),
   );
   ipcMain.handle(IpcChannel.listTags, () => withDb(listTags));
   ipcMain.handle(IpcChannel.listProjects, () => withDb(listProjects));
@@ -105,5 +118,10 @@ export function registerIpcHandlers(db: Database.Database | null, wikiDir: strin
   ipcMain.handle(IpcChannel.listJournal, () => withDb(listJournal));
   ipcMain.handle(IpcChannel.saveJournalEntry, (_event, date: unknown, text: unknown) =>
     withDb((d) => saveJournalEntry(d, date, text)),
+  );
+
+  ipcMain.handle(IpcChannel.getRemindersEnabled, () => withDb(getRemindersEnabled));
+  ipcMain.handle(IpcChannel.setRemindersEnabled, (_event, enabled: unknown) =>
+    rearm(withDb((d) => setRemindersEnabled(d, enabled))),
   );
 }

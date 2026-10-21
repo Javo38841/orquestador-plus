@@ -6,6 +6,7 @@ import {
   type RecurrenceError,
   type RecurrenceRule,
 } from './recurrence';
+import { validateReminder, type ReminderError } from './reminders';
 
 export const TASK_TITLE_MAX_LENGTH = 200;
 export const PROJECT_NAME_MAX_LENGTH = 60;
@@ -45,6 +46,10 @@ export interface Task {
   seriesId: number | null;
   /** Repetition rule of the series; `{ kind: 'once' }` when the task is not in a series. */
   recurrence: RecurrenceRule;
+  /** Local `YYYY-MM-DDTHH:mm` at which to notify (RF-18), or null. */
+  reminderAt: string | null;
+  /** ISO-8601 UTC timestamp of when the reminder fired; null while it has not. */
+  reminderNotifiedAt: string | null;
 }
 
 /** Fields the form sends. A new project is created by name together with the task. */
@@ -57,6 +62,8 @@ export interface TaskInput {
   tags?: string[];
   /** Repetition rule. Omitted or `once` means a plain task. */
   recurrence?: RecurrenceRule | null;
+  /** Local `YYYY-MM-DDTHH:mm` reminder. Omitted or null means no reminder. */
+  reminderAt?: string | null;
 }
 
 export type TagError = 'tag_empty' | 'tag_too_long' | 'tag_spaces';
@@ -68,7 +75,8 @@ export type TaskError =
   | 'invalid_project'
   | 'not_found'
   | TagError
-  | RecurrenceError;
+  | RecurrenceError
+  | ReminderError;
 
 export type TaskResult = { ok: true; task: Task } | { ok: false; error: TaskError };
 export type ProjectResult = { ok: true; project: Project } | { ok: false; error: TaskError };
@@ -80,6 +88,7 @@ export interface ValidTaskInput {
   newProjectName: string | null;
   tags: string[];
   recurrence: RecurrenceRule;
+  reminderAt: string | null;
 }
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -184,6 +193,12 @@ export function validateTaskInput(
     return { ok: false, error: 'recurrence_due_required' };
   }
 
+  const reminder = validateReminder(raw['reminderAt']);
+  if (!reminder.ok) return reminder;
+  if (reminder.reminderAt !== null && isSeriesRule(recurrence.rule)) {
+    return { ok: false, error: 'reminder_series' };
+  }
+
   return {
     ok: true,
     value: {
@@ -193,6 +208,7 @@ export function validateTaskInput(
       newProjectName,
       tags: tags.tags,
       recurrence: recurrence.rule,
+      reminderAt: reminder.reminderAt,
     },
   };
 }

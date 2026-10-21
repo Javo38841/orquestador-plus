@@ -31,7 +31,7 @@ export const JOURNAL_ERROR_KEYS: Record<JournalError, string> = {
         data-testid="journal-text"
         [placeholder]="'journal.placeholder' | transloco"
         [value]="todayText()"
-        (input)="todayText.set($any($event.target).value); status.set(null)"
+        (input)="onTodayInput($any($event.target).value)"
       ></textarea>
       <div class="flex items-center gap-3">
         <button
@@ -128,6 +128,7 @@ export class JournalPage implements OnInit {
   protected readonly store = inject(JournalStore);
   protected readonly today = localJournalDate();
   protected readonly todayText = signal('');
+  private edited = false;
   protected readonly status = signal<'saved' | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly editingDate = signal<string | null>(null);
@@ -141,7 +142,14 @@ export class JournalPage implements OnInit {
   async ngOnInit(): Promise<void> {
     await this.store.load();
     const current = this.store.entries().find((e) => e.date === this.today);
-    this.todayText.set(current?.text ?? '');
+    // Typing before the load finished wins over the stored text.
+    if (!this.edited) this.todayText.set(current?.text ?? '');
+  }
+
+  protected onTodayInput(text: string): void {
+    this.edited = true;
+    this.todayText.set(text);
+    this.status.set(null);
   }
 
   protected async saveToday(): Promise<void> {

@@ -17,6 +17,8 @@ const task = (id: number, status: Task['status'] = 'todo', title = `t${id}`): Ta
   completedAt: null,
   seriesId: null,
   recurrence: { kind: 'once' },
+  reminderAt: null,
+  reminderNotifiedAt: null,
 });
 
 function setup(stored: Task[]) {

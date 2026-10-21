@@ -19,6 +19,8 @@ const task = (id: number, extra: Partial<Task> = {}): Task => ({
   completedAt: null,
   seriesId: null,
   recurrence: { kind: 'once' },
+  reminderAt: null,
+  reminderNotifiedAt: null,
   ...extra,
 });
 
@@ -37,6 +39,8 @@ async function render(
     listProjects: async () => [{ id: 1, name: 'api-gateway' }],
     createTask,
     deleteTask,
+    getRemindersEnabled: async () => true,
+    setRemindersEnabled: async (value: boolean) => value,
     ...overrides,
   } as unknown as OrquestadorApi;
   await TestBed.configureTestingModule({
@@ -157,6 +161,7 @@ describe('TasksPage', () => {
       newProjectName: null,
       tags: [],
       recurrence: { kind: 'once' },
+      reminderAt: null,
     });
     expect(q('task-form')).toBeNull();
   });
@@ -355,5 +360,71 @@ describe('TasksPage', () => {
     await settle();
     expect(q<HTMLSelectElement>('recurrence-kind')!.value).toBe('weekly');
     expect(q<HTMLSelectElement>('recurrence-weekday')!.value).toBe('5');
+  });
+
+  it('CP-18-01: the form sends the chosen reminder with the task', async () => {
+    const { q, settle, createTask } = await render([]);
+    q('new-task')!.click();
+    await settle();
+    const title = q<HTMLInputElement>('task-title')!;
+    title.value = 'Llamar al dentista';
+    title.dispatchEvent(new Event('input'));
+    const reminder = q<HTMLInputElement>('task-reminder')!;
+    reminder.value = '2026-03-10T09:00';
+    reminder.dispatchEvent(new Event('input'));
+    q('task-save')!.click();
+    await settle();
+
+    expect(createTask).toHaveBeenCalledWith(
+      expect.objectContaining({ reminderAt: '2026-03-10T09:00' }),
+    );
+  });
+
+  it('CP-18-01: editing a task shows its reminder and "Quitar recordatorio" clears it', async () => {
+    const updateTask = vi.fn(async (id: number): Promise<TaskResult> => ({
+      ok: true,
+      task: task(id),
+    }));
+    const { q, settle } = await render([task(1, { reminderAt: '2026-03-10T09:00' })], {
+      updateTask,
+    });
+    q('task-edit')!.click();
+    await settle();
+    expect(q<HTMLInputElement>('task-reminder')!.value).toBe('2026-03-10T09:00');
+
+    q('task-reminder-clear')!.click();
+    await settle();
+    q('task-save')!.click();
+    await settle();
+
+    expect(updateTask).toHaveBeenCalledWith(1, expect.objectContaining({ reminderAt: null }));
+  });
+
+  it('CP-18-02: a rejected reminder shows a Spanish message', async () => {
+    const createTask = vi.fn(async (): Promise<TaskResult> => ({
+      ok: false,
+      error: 'invalid_reminder',
+    }));
+    const { q, settle } = await render([], { createTask });
+    q('new-task')!.click();
+    await settle();
+    const title = q<HTMLInputElement>('task-title')!;
+    title.value = 'Algo';
+    title.dispatchEvent(new Event('input'));
+    q('task-save')!.click();
+    await settle();
+
+    expect(q('task-error')?.textContent).toContain('recordatorio no es válida');
+  });
+
+  it('CP-18-09: a task with a reminder shows when, and whether it was notified', async () => {
+    const { el } = await render([
+      task(1, { reminderAt: '2026-03-10T09:00' }),
+      task(2, { reminderAt: '2026-03-10T10:00', reminderNotifiedAt: '2026-03-10T13:00:00.000Z' }),
+    ]);
+    const chips = [...el.querySelectorAll('[data-testid="task-reminder-chip"]')].map((c) =>
+      c.textContent?.trim(),
+    );
+    expect(chips).toEqual(['Recordatorio 2026-03-10 09:00', 'Notificado · 2026-03-10 10:00']);
   });
 });

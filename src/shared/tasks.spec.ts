@@ -44,6 +44,7 @@ describe('validateTaskInput', () => {
         newProjectName: 'api',
         tags: [],
         recurrence: { kind: 'once' },
+        reminderAt: null,
       },
     });
   });

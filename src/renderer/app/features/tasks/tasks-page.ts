@@ -12,6 +12,7 @@ import {
 } from '../recurrence/recurrence-editor';
 import { recurrenceLabel } from '../recurrence/recurrence-label';
 import { SeriesList } from '../recurrence/series-list';
+import { RemindersToggle } from '../reminders/reminders-toggle';
 import { TAG_ERROR_KEYS, TagsEditor } from '../tags/tags-editor';
 import { TasksStore } from './tasks.store';
 
@@ -21,6 +22,8 @@ const ERROR_KEYS: Record<TaskError, string> = {
   invalid_date: 'tasks.errors.invalidDate',
   invalid_project: 'tasks.errors.invalidProject',
   not_found: 'tasks.errors.notFound',
+  invalid_reminder: 'tasks.errors.invalidReminder',
+  reminder_series: 'tasks.errors.reminderSeries',
   ...TAG_ERROR_KEYS,
   ...RECURRENCE_ERROR_KEYS,
 };
@@ -30,6 +33,8 @@ const NEW_PROJECT = 'new';
 interface Draft {
   title: string;
   dueDate: string;
+  /** Local `YYYY-MM-DDTHH:mm`, or '' for no reminder. */
+  reminderAt: string;
   /** '' = loose, 'new' = create from `newProjectName`, otherwise a project id. */
   project: string;
   newProjectName: string;
@@ -40,6 +45,7 @@ interface Draft {
 const EMPTY_DRAFT: Draft = {
   title: '',
   dueDate: '',
+  reminderAt: '',
   project: '',
   newProjectName: '',
   tags: [],
@@ -49,12 +55,13 @@ const EMPTY_DRAFT: Draft = {
 /** Tasks list (RF-02): create, edit, complete and delete, with an optional project. */
 @Component({
   selector: 'app-tasks-page',
-  imports: [TranslocoPipe, TagsEditor, RecurrenceEditor, SeriesList],
+  imports: [TranslocoPipe, TagsEditor, RecurrenceEditor, SeriesList, RemindersToggle],
   template: `
     <header class="mb-6 flex items-start justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold">{{ 'nav.tasks' | transloco }}</h1>
         <p class="mt-1 text-sm text-muted">{{ 'pages.tasks' | transloco }}</p>
+        <app-reminders-toggle class="mt-2 block" />
       </div>
       <button
         type="button"
@@ -93,6 +100,28 @@ const EMPTY_DRAFT: Draft = {
               [value]="d.dueDate"
               (input)="patch({ dueDate: $any($event.target).value })"
             />
+          </label>
+          <label class="block text-sm">
+            <span class="text-muted">{{ 'tasks.form.reminder' | transloco }}</span>
+            <span class="mt-1 flex items-center gap-2">
+              <input
+                type="datetime-local"
+                class="block rounded-md border border-line bg-canvas px-3 py-2 text-ink"
+                data-testid="task-reminder"
+                [value]="d.reminderAt"
+                (input)="patch({ reminderAt: $any($event.target).value })"
+              />
+              @if (d.reminderAt) {
+                <button
+                  type="button"
+                  class="text-xs text-muted underline"
+                  data-testid="task-reminder-clear"
+                  (click)="patch({ reminderAt: '' })"
+                >
+                  {{ 'tasks.form.clearReminder' | transloco }}
+                </button>
+              }
+            </span>
           </label>
           <label class="block text-sm">
             <span class="text-muted">{{ 'tasks.form.project' | transloco }}</span>
@@ -249,6 +278,16 @@ const EMPTY_DRAFT: Draft = {
                     [class.text-muted]="task.status === 'done'"
                     >{{ task.title }}</span
                   >
+                  @if (task.reminderAt; as when) {
+                    <span
+                      class="rounded-full bg-line px-2 py-0.5 text-xs text-muted"
+                      data-testid="task-reminder-chip"
+                      >{{
+                        (task.reminderNotifiedAt ? 'tasks.reminderDone' : 'tasks.reminderChip')
+                          | transloco: { when: when.replace('T', ' ') }
+                      }}</span
+                    >
+                  }
                   @if (chip(task); as text) {
                     <span
                       class="rounded-full bg-repeat/20 px-2 py-0.5 text-xs text-repeat"
@@ -372,6 +411,7 @@ export class TasksPage implements OnInit {
         ? {
             title: task.title,
             dueDate: task.dueDate ?? '',
+            reminderAt: task.reminderAt ?? '',
             project: task.projectId === null ? '' : String(task.projectId),
             newProjectName: '',
             tags: task.tags,
@@ -416,6 +456,7 @@ export class TasksPage implements OnInit {
         {
           title: d.title,
           dueDate: d.dueDate || null,
+          reminderAt: d.reminderAt || null,
           projectId: d.project === '' || creating ? null : Number(d.project),
           newProjectName: creating ? d.newProjectName : null,
           tags: this.draft()!.tags,

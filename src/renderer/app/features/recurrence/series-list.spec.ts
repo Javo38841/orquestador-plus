@@ -20,6 +20,8 @@ const task = (id: number, extra: Partial<Task> = {}): Task => ({
   completedAt: null,
   seriesId: id,
   recurrence: { kind: 'daily' },
+  reminderAt: null,
+  reminderNotifiedAt: null,
   ...extra,
 });
 

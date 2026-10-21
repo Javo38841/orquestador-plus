@@ -30,6 +30,8 @@ const api: OrquestadorApi = {
   deleteBug: (id) => ipcRenderer.invoke(IpcChannel.deleteBug, id),
   listJournal: () => ipcRenderer.invoke(IpcChannel.listJournal),
   saveJournalEntry: (date, text) => ipcRenderer.invoke(IpcChannel.saveJournalEntry, date, text),
+  getRemindersEnabled: () => ipcRenderer.invoke(IpcChannel.getRemindersEnabled),
+  setRemindersEnabled: (enabled) => ipcRenderer.invoke(IpcChannel.setRemindersEnabled, enabled),
 };
 
 contextBridge.exposeInMainWorld('orquestador', api);

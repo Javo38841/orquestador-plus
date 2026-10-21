@@ -48,6 +48,8 @@ function fakeApi(overrides: Partial<AppInfo> = {}, bugs: Bug[] = []): Orquestado
     deleteBug: async () => false,
     listJournal: async () => [],
     saveJournalEntry: async () => ({ ok: true, entry: null }),
+    getRemindersEnabled: async () => true,
+    setRemindersEnabled: async (enabled: boolean) => enabled,
   };
 }
 
