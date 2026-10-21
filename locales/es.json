@@ -72,6 +72,17 @@
       "failed": "No se pudo clasificar el elemento"
     }
   },
+  "tags": {
+    "label": "Etiquetas",
+    "placeholder": "Escribe una etiqueta",
+    "add": "Agregar",
+    "remove": "Quitar etiqueta",
+    "errors": {
+      "empty": "La etiqueta no puede estar vacía",
+      "tooLong": "La etiqueta admite como máximo 30 caracteres",
+      "spaces": "La etiqueta no puede contener espacios"
+    }
+  },
   "today": {
     "overdue": "Atrasadas",
     "forToday": "Para hoy",
@@ -95,6 +106,8 @@
       "due": "Vence"
     },
     "loose": "Suelta",
+    "filterByTag": "Filtrar por etiqueta",
+    "allTags": "Todas",
     "showCompleted": "Mostrar completadas",
     "form": {
       "title": "Título",

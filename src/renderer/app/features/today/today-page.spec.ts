@@ -21,6 +21,7 @@ const task = (id: number, extra: Partial<Task> = {}): Task => ({
   projectId: null,
   projectName: null,
   forToday: false,
+  tags: [],
   createdAt: '2026-03-01T10:00:00.000Z',
   ...extra,
 });
@@ -32,6 +33,7 @@ async function render(stored: Task[]) {
   }));
   const api = {
     listTasks: async () => stored,
+    listTags: async () => [],
     listProjects: async () => [],
     setTaskStatus,
   } as unknown as OrquestadorApi;
@@ -109,5 +111,13 @@ describe('TodayPage', () => {
 
     expect(el.querySelectorAll('[data-testid="today-task"]')).toHaveLength(1);
     expect(subtitle()).toContain('1 pendiente ');
+  });
+
+  it('CP-07-01: tags show as #chips on tasks in Hoy', async () => {
+    const { el } = await render([task(1, { forToday: true, tags: ['infra'] })]);
+    const chips = [...el.querySelectorAll('[data-testid="today-tag"]')].map((c) =>
+      c.textContent?.trim(),
+    );
+    expect(chips).toEqual(['#infra']);
   });
 });

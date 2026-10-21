@@ -29,6 +29,7 @@ function fakeApi(overrides: Partial<AppInfo> = {}): OrquestadorApi {
     setTaskStatus: async () => ({ ok: false, error: 'not_found' }),
     setTaskForToday: async () => ({ ok: false, error: 'not_found' }),
     deleteTask: async () => false,
+    listTags: async () => [],
     listProjects: async () => [],
     createProject: async () => ({ ok: false, error: 'empty' }),
     deleteProject: async () => false,
