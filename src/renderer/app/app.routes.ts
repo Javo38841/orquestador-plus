@@ -6,12 +6,16 @@ import { TasksPage } from './features/tasks/tasks-page';
 import { SectionPage } from './features/section-page/section-page';
 import { BugsPage } from './features/bugs/bugs-page';
 import { JournalPage } from './features/journal/journal-page';
+import { SnippetsPage } from './features/snippets/snippets-page';
 import { WikiPage } from './features/wiki/wiki-page';
 import { NAVIGATION } from './layout/navigation';
 
 const sectionRoutes: Routes = NAVIGATION.flatMap((group) => group.items)
   .filter(
-    (item) => !['inbox', 'tasks', 'today', 'board', 'bugs', 'journal', 'wiki'].includes(item.path),
+    (item) =>
+      !['inbox', 'tasks', 'today', 'board', 'bugs', 'journal', 'wiki', 'snippets'].includes(
+        item.path,
+      ),
   )
   .map((item) => ({
     path: item.path,
@@ -32,6 +36,7 @@ export const routes: Routes = [
     component: WikiPage,
     canDeactivate: [(page: WikiPage) => page.confirmLeave()],
   },
+  { path: 'snippets', component: SnippetsPage },
   ...sectionRoutes,
   { path: '**', redirectTo: 'today' },
 ];

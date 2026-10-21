@@ -280,6 +280,43 @@
       "notFound": "El bug ya no existe"
     }
   },
+  "snippets": {
+    "new": "Nuevo snippet",
+    "empty": "Todavía no hay snippets guardados.",
+    "createFirst": "Crear el primer snippet",
+    "emptyFilter": "No hay snippets en este filtro.",
+    "filters": {
+      "all": "Todos",
+      "sql": "SQL",
+      "command": "Comandos"
+    },
+    "filterTag": "Etiqueta",
+    "allTags": "Todas",
+    "types": {
+      "sql": "SQL",
+      "command": "Comando"
+    },
+    "fields": {
+      "title": "Título",
+      "type": "Tipo",
+      "content": "Contenido"
+    },
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "confirmYes": "Sí, eliminar",
+    "confirmNo": "No",
+    "errors": {
+      "emptyTitle": "Escribe un título para el snippet",
+      "emptyContent": "Escribe el contenido del snippet",
+      "tooLong": "El título o el contenido es demasiado largo",
+      "invalid": "El snippet no es válido",
+      "notFound": "El snippet ya no existe"
+    }
+  },
   "journal": {
     "today": "Hoy",
     "placeholder": "¿Qué hiciste, qué decidiste, qué te bloquea?",
