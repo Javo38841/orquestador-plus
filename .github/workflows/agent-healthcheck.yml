@@ -4,6 +4,8 @@ name: Agent · healthcheck
 # the full output, so authentication errors are visible.
 on:
   workflow_dispatch:
+  pull_request:
+    paths: ['.github/workflows/agent-healthcheck.yml']
 
 permissions:
   contents: read
@@ -11,7 +13,7 @@ permissions:
 jobs:
   ping:
     name: Ping Claude
-    if: github.actor == 'Javo38841'
+    if: github.actor == 'Javo38841' && github.event.pull_request.head.repo.fork != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
