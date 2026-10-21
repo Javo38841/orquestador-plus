@@ -1,5 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { validateCapture, type CaptureError, type InboxItem } from '../../../../shared/inbox';
+import { validateTaskInput, type TaskError, type TaskInput } from '../../../../shared/tasks';
 import { DESKTOP_API } from '../../core/desktop-api';
 
 @Injectable({ providedIn: 'root' })
@@ -25,5 +26,24 @@ export class InboxStore {
     if (!result.ok) return result.error;
     this.list.update((items) => [result.item, ...items]);
     return null;
+  }
+
+  /** Turns an item into a task. Returns the validation error, if any. */
+  async convert(id: number, input: TaskInput): Promise<TaskError | null> {
+    const checked = validateTaskInput(input);
+    if (!checked.ok) return checked.error;
+    if (!this.api) return null;
+
+    const result = await this.api.convertInboxItem(id, input);
+    if (!result.ok) return result.error;
+    this.list.update((items) => items.filter((i) => i.id !== id));
+    return null;
+  }
+
+  async discard(id: number): Promise<void> {
+    if (!this.api) return;
+    if (await this.api.discardInboxItem(id)) {
+      this.list.update((items) => items.filter((i) => i.id !== id));
+    }
   }
 }

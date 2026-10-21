@@ -21,6 +21,8 @@ function fakeApi(overrides: Partial<AppInfo> = {}): OrquestadorApi {
     }),
     listInbox: async () => [],
     captureInbox: async () => ({ ok: false, error: 'empty' }),
+    convertInboxItem: async () => ({ ok: false, error: 'not_found' }),
+    discardInboxItem: async () => false,
     listTasks: async () => [],
     createTask: async () => ({ ok: false, error: 'empty' }),
     updateTask: async () => ({ ok: false, error: 'empty' }),
