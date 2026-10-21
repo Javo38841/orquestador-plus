@@ -1,4 +1,5 @@
 import type { CaptureResult, InboxItem } from './inbox';
+import type { NoteInput, NoteResult, NoteSummary } from './wiki';
 import type { Project, ProjectResult, Task, TaskInput, TaskResult, TaskStatus } from './tasks';
 
 /**
@@ -23,6 +24,11 @@ export const IpcChannel = {
   listProjects: 'projects:list',
   createProject: 'projects:create',
   deleteProject: 'projects:delete',
+  listNotes: 'notes:list',
+  getNote: 'notes:get',
+  createNote: 'notes:create',
+  updateNote: 'notes:update',
+  deleteNote: 'notes:delete',
 } as const;
 
 export type ReleaseChannel = 'dev' | 'prod';
@@ -56,4 +62,12 @@ export interface OrquestadorApi {
   listProjects(): Promise<Project[]>;
   createProject(name: string): Promise<ProjectResult>;
   deleteProject(id: number): Promise<boolean>;
+  /** Wiki notes sorted by title (RF-08). */
+  listNotes(): Promise<NoteSummary[]>;
+  /** A note with its links and backlinks; `slug` is the file name without `.md`. */
+  getNote(slug: string): Promise<NoteResult>;
+  createNote(input: NoteInput): Promise<NoteResult>;
+  /** Saves content and, if the title changed, renames the note. */
+  updateNote(slug: string, input: NoteInput): Promise<NoteResult>;
+  deleteNote(slug: string): Promise<boolean>;
 }

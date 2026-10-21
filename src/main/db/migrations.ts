@@ -120,6 +120,31 @@ export const migrations: Migration[] = [
       CREATE INDEX idx_tasks_series ON tasks (series_id);
     `,
   },
+  {
+    version: 8,
+    name: 'wiki_notes',
+    // Index only: the .md files in wiki/ are the source of truth (ADR-001). Links are stored by
+    // normalized target title, so they resolve (or go pending) on read without further writes.
+    up: `
+      CREATE TABLE notes (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        slug       TEXT NOT NULL,
+        title      TEXT NOT NULL,
+        title_key  TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE UNIQUE INDEX idx_notes_slug ON notes (slug COLLATE NOCASE);
+      CREATE UNIQUE INDEX idx_notes_title_key ON notes (title_key);
+      CREATE TABLE note_links (
+        note_id INTEGER NOT NULL REFERENCES notes (id) ON DELETE CASCADE,
+        key     TEXT NOT NULL,
+        label   TEXT NOT NULL,
+        PRIMARY KEY (note_id, key)
+      ) STRICT;
+      CREATE INDEX idx_note_links_key ON note_links (key);
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {
