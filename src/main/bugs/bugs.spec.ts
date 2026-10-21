@@ -156,7 +156,7 @@ describe('bugs', () => {
   it('CP-09-13: the bugs table comes from a new migration after the existing ones', () => {
     const migration = migrations.find((m) => m.name === 'bugs');
     expect(migration).toBeDefined();
-    expect(migration!.version).toBe(Math.max(...migrations.map((m) => m.version)));
+    expect(migration!.version).toBe(9);
     expect(db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'bugs'").get()).toBeDefined();
   });
 

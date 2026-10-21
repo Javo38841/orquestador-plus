@@ -1,4 +1,5 @@
 import type { Bug, BugInput, BugResult, BugStatus } from './bugs';
+import type { JournalEntry, JournalResult } from './journal';
 import type { CaptureResult, InboxItem } from './inbox';
 import type { NoteInput, NoteResult, NoteSummary } from './wiki';
 import type { Project, ProjectResult, Task, TaskInput, TaskResult, TaskStatus } from './tasks';
@@ -35,6 +36,8 @@ export const IpcChannel = {
   updateBug: 'bugs:update',
   setBugStatus: 'bugs:set-status',
   deleteBug: 'bugs:delete',
+  listJournal: 'journal:list',
+  saveJournalEntry: 'journal:save',
 } as const;
 
 export type ReleaseChannel = 'dev' | 'prod';
@@ -82,4 +85,8 @@ export interface OrquestadorApi {
   updateBug(id: number, input: BugInput): Promise<BugResult>;
   setBugStatus(id: number, status: BugStatus): Promise<BugResult>;
   deleteBug(id: number): Promise<boolean>;
+  /** Journal entries, most recent day first (RF-12). */
+  listJournal(): Promise<JournalEntry[]>;
+  /** Upserts the day's entry; a blank text deletes it. */
+  saveJournalEntry(date: string, text: string): Promise<JournalResult>;
 }

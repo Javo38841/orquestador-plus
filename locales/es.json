@@ -263,5 +263,19 @@
       "invalid": "El bug no es válido",
       "notFound": "El bug ya no existe"
     }
+  },
+  "journal": {
+    "today": "Hoy",
+    "placeholder": "¿Qué hiciste, qué decidiste, qué te bloquea?",
+    "save": "Guardar",
+    "saved": "Guardado",
+    "previous": "Días anteriores",
+    "empty": "Todavía no hay entradas en la bitácora. Escribe la de hoy.",
+    "edit": "Editar",
+    "cancel": "Cancelar",
+    "errors": {
+      "invalid": "La entrada no es válida",
+      "tooLong": "La entrada es demasiado larga"
+    }
   }
 }
