@@ -25,7 +25,7 @@ const SELECT_TASK = `
   SELECT t.id, t.title, t.status, t.due_date, t.project_id, p.name AS project_name, t.for_today, t.created_at
   FROM tasks t LEFT JOIN projects p ON p.id = t.project_id`;
 
-function toTask(row: TaskRow): Task {
+function toTask(row: TaskRow, tags: string[] = []): Task {
   return {
     id: row.id,
     title: row.title,
@@ -34,13 +34,46 @@ function toTask(row: TaskRow): Task {
     projectId: row.project_id,
     projectName: row.project_name,
     forToday: row.for_today === 1,
+    tags,
     createdAt: row.created_at,
   };
 }
 
 function getTask(db: Database.Database, id: number): Task | null {
   const row = db.prepare(`${SELECT_TASK} WHERE t.id = ?`).get(id) as TaskRow | undefined;
-  return row ? toTask(row) : null;
+  if (!row) return null;
+  const tags = db
+    .prepare(
+      'SELECT g.name FROM task_tags tt JOIN tags g ON g.id = tt.tag_id WHERE tt.task_id = ? ORDER BY g.name',
+    )
+    .all(id) as { name: string }[];
+  return toTask(
+    row,
+    tags.map((t) => t.name),
+  );
+}
+
+/** Replaces the tag set of a task. Tags are stored once and related per task. */
+function setTags(db: Database.Database, taskId: number, tags: string[]): void {
+  db.prepare('DELETE FROM task_tags WHERE task_id = ?').run(taskId);
+  const insertTag = db.prepare('INSERT OR IGNORE INTO tags (name) VALUES (?)');
+  const link = db.prepare(
+    'INSERT INTO task_tags (task_id, tag_id) SELECT ?, id FROM tags WHERE name = ?',
+  );
+  for (const tag of tags) {
+    insertTag.run(tag);
+    link.run(taskId, tag);
+  }
+}
+
+/** Tags in use by at least one task, alphabetical. */
+export function listTags(db: Database.Database): string[] {
+  const rows = db
+    .prepare(
+      'SELECT DISTINCT g.name FROM tags g JOIN task_tags tt ON tt.tag_id = g.id ORDER BY g.name',
+    )
+    .all() as { name: string }[];
+  return rows.map((r) => r.name);
 }
 
 function isId(value: unknown): value is number {
@@ -86,7 +119,9 @@ export function createTask(
         "INSERT INTO tasks (title, status, due_date, project_id, created_at) VALUES (?, 'todo', ?, ?, ?)",
       )
       .run(value.title, value.dueDate, projectId, now.toISOString());
-    return Number(info.lastInsertRowid);
+    const taskId = Number(info.lastInsertRowid);
+    setTags(db, taskId, value.tags);
+    return taskId;
   })();
 
   return { ok: true, task: getTask(db, id)! };
@@ -115,6 +150,7 @@ export function updateTask(
       projectId,
       id,
     );
+    setTags(db, id, value.tags);
   })();
 
   return { ok: true, task: getTask(db, id)! };
@@ -149,7 +185,18 @@ export function listTasks(db: Database.Database): Task[] {
        ORDER BY (t.status = 'done'), t.due_date IS NULL, t.due_date, t.created_at DESC, t.id DESC`,
     )
     .all() as TaskRow[];
-  return rows.map(toTask);
+  const byTask = new Map<number, string[]>();
+  const links = db
+    .prepare(
+      'SELECT tt.task_id, g.name FROM task_tags tt JOIN tags g ON g.id = tt.tag_id ORDER BY g.name',
+    )
+    .all() as { task_id: number; name: string }[];
+  for (const link of links) {
+    const list = byTask.get(link.task_id) ?? [];
+    list.push(link.name);
+    byTask.set(link.task_id, list);
+  }
+  return rows.map((row) => toTask(row, byTask.get(row.id)));
 }
 
 export function listProjects(db: Database.Database): Project[] {
