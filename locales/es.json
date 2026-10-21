@@ -93,6 +93,24 @@
       "spaces": "La etiqueta no puede contener espacios"
     }
   },
+  "focus": {
+    "title": "Enfoque",
+    "clockLabel": "Tiempo restante",
+    "task": "Tarea en la que te enfocas",
+    "chooseTask": "Elige una tarea",
+    "start": "Iniciar",
+    "pause": "Pausar",
+    "resume": "Reanudar",
+    "reset": "Reiniciar",
+    "needsTask": "Elige una tarea para iniciar el enfoque.",
+    "finished": "¡Sesión de enfoque terminada!",
+    "state": {
+      "idle": "Detenido",
+      "running": "En curso",
+      "paused": "En pausa",
+      "finished": "Terminada"
+    }
+  },
   "today": {
     "overdue": "Atrasadas",
     "forToday": "Para hoy",
