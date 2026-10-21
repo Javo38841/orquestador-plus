@@ -2,14 +2,16 @@ import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { TranslocoTestingModule } from '@jsverse/transloco';
+import type { Bug } from '../../shared/bugs';
 import type { AppInfo, OrquestadorApi } from '../../shared/ipc';
 import { App } from './app';
 import { routes } from './app.routes';
 import { AppInfoStore } from './core/app-info.store';
+import { BugsStore } from './features/bugs/bugs.store';
 import { DESKTOP_API } from './core/desktop-api';
 import { TRANSLATIONS } from './i18n/transloco-loader';
 
-function fakeApi(overrides: Partial<AppInfo> = {}): OrquestadorApi {
+function fakeApi(overrides: Partial<AppInfo> = {}, bugs: Bug[] = []): OrquestadorApi {
   return {
     getAppInfo: async () => ({
       name: 'OrquestadorPlus',
@@ -39,6 +41,11 @@ function fakeApi(overrides: Partial<AppInfo> = {}): OrquestadorApi {
     updateNote: async () => ({ ok: false, error: 'not_found' }),
     deleteNote: async () => false,
     deleteSeries: async () => false,
+    listBugs: async () => bugs,
+    createBug: async () => ({ ok: false, error: 'empty' }),
+    updateBug: async () => ({ ok: false, error: 'not_found' }),
+    setBugStatus: async () => ({ ok: false, error: 'not_found' }),
+    deleteBug: async () => false,
   };
 }
 
@@ -55,6 +62,7 @@ async function render(api: OrquestadorApi) {
     providers: [provideRouter(routes), { provide: DESKTOP_API, useValue: api }],
   }).compileComponents();
   await TestBed.inject(AppInfoStore).load();
+  await TestBed.inject(BugsStore).load();
   const fixture = TestBed.createComponent(App);
   await fixture.whenStable();
   return fixture.nativeElement as HTMLElement;
@@ -104,5 +112,23 @@ describe('App', () => {
     TestBed.inject(ApplicationRef).tick();
 
     expect(el.querySelector('app-capture-panel')).not.toBeNull();
+  });
+
+  it('CP-09-10: the sidebar shows the number of open bugs', async () => {
+    const bug = (id: number, status: Bug['status']): Bug => ({
+      id,
+      code: `BUG-${id}`,
+      title: `b${id}`,
+      symptom: '',
+      impact: '',
+      rootCause: '',
+      solution: '',
+      severity: 'medium',
+      status,
+      createdAt: '2026-03-01T10:00:00.000Z',
+      updatedAt: '2026-03-01T10:00:00.000Z',
+    });
+    const el = await render(fakeApi({}, [bug(1, 'new'), bug(2, 'analysis'), bug(3, 'resolved')]));
+    expect(el.querySelector('[data-testid="bugs-count"]')?.textContent?.trim()).toBe('2');
   });
 });

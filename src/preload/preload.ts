@@ -23,6 +23,11 @@ const api: OrquestadorApi = {
   createNote: (input) => ipcRenderer.invoke(IpcChannel.createNote, input),
   updateNote: (slug, input) => ipcRenderer.invoke(IpcChannel.updateNote, slug, input),
   deleteNote: (slug) => ipcRenderer.invoke(IpcChannel.deleteNote, slug),
+  listBugs: () => ipcRenderer.invoke(IpcChannel.listBugs),
+  createBug: (input) => ipcRenderer.invoke(IpcChannel.createBug, input),
+  updateBug: (id, input) => ipcRenderer.invoke(IpcChannel.updateBug, id, input),
+  setBugStatus: (id, status) => ipcRenderer.invoke(IpcChannel.setBugStatus, id, status),
+  deleteBug: (id) => ipcRenderer.invoke(IpcChannel.deleteBug, id),
 };
 
 contextBridge.exposeInMainWorld('orquestador', api);

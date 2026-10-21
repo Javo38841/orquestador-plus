@@ -1,3 +1,4 @@
+import type { Bug, BugInput, BugResult, BugStatus } from './bugs';
 import type { CaptureResult, InboxItem } from './inbox';
 import type { NoteInput, NoteResult, NoteSummary } from './wiki';
 import type { Project, ProjectResult, Task, TaskInput, TaskResult, TaskStatus } from './tasks';
@@ -29,6 +30,11 @@ export const IpcChannel = {
   createNote: 'notes:create',
   updateNote: 'notes:update',
   deleteNote: 'notes:delete',
+  listBugs: 'bugs:list',
+  createBug: 'bugs:create',
+  updateBug: 'bugs:update',
+  setBugStatus: 'bugs:set-status',
+  deleteBug: 'bugs:delete',
 } as const;
 
 export type ReleaseChannel = 'dev' | 'prod';
@@ -70,4 +76,10 @@ export interface OrquestadorApi {
   /** Saves content and, if the title changed, renames the note. */
   updateNote(slug: string, input: NoteInput): Promise<NoteResult>;
   deleteNote(slug: string): Promise<boolean>;
+  /** Bugs, newest first (RF-09). */
+  listBugs(): Promise<Bug[]>;
+  createBug(input: BugInput): Promise<BugResult>;
+  updateBug(id: number, input: BugInput): Promise<BugResult>;
+  setBugStatus(id: number, status: BugStatus): Promise<BugResult>;
+  deleteBug(id: number): Promise<boolean>;
 }

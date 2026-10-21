@@ -3,6 +3,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { AppInfoStore } from './core/app-info.store';
 import { CapturePanel } from './features/capture/capture-panel';
+import { BugsStore } from './features/bugs/bugs.store';
 import { InboxStore } from './features/inbox/inbox.store';
 import { NAVIGATION } from './layout/navigation';
 
@@ -15,6 +16,7 @@ import { NAVIGATION } from './layout/navigation';
 export class App {
   protected readonly store = inject(AppInfoStore);
   protected readonly inbox = inject(InboxStore);
+  protected readonly bugs = inject(BugsStore);
   protected readonly navigation = NAVIGATION;
   protected readonly captureOpen = signal(false);
 
