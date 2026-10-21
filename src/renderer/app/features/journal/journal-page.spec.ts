@@ -13,12 +13,15 @@ import { JournalPage } from './journal-page';
 const TODAY = localJournalDate();
 const entry = (date: string, text: string): JournalEntry => ({ date, text, updatedAt: '' });
 
-async function render(stored: JournalEntry[] = []) {
+async function render(
+  stored: JournalEntry[] = [],
+  list: () => Promise<JournalEntry[]> = async () => stored,
+) {
   const saveJournalEntry = vi.fn(async (date: string, text: string): Promise<JournalResult> => ({
     ok: true,
     entry: text.trim() ? entry(date, text) : null,
   }));
-  const api = { listJournal: vi.fn(async () => stored), saveJournalEntry };
+  const api = { listJournal: vi.fn(list), saveJournalEntry };
   await TestBed.configureTestingModule({
     imports: [
       JournalPage,
@@ -45,6 +48,22 @@ async function render(stored: JournalEntry[] = []) {
 }
 
 describe('JournalPage', () => {
+  it('keeps what the user typed when the stored entries arrive afterwards', async () => {
+    let release!: (entries: JournalEntry[]) => void;
+    const { q, settle } = await render(
+      [],
+      () => new Promise<JournalEntry[]>((resolve) => (release = resolve)),
+    );
+    const textarea = q('journal-text') as HTMLTextAreaElement;
+    textarea.value = 'escrito antes de cargar';
+    textarea.dispatchEvent(new Event('input'));
+    await settle();
+    release([]);
+    await settle();
+    await settle();
+    expect(textarea.value).toBe('escrito antes de cargar');
+  });
+
   it("CP-12-06: shows today's entry ready to edit with the previous days below", async () => {
     const { q, qa } = await render([
       entry(TODAY, 'hoy trabajé'),
