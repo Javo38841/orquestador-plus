@@ -85,7 +85,7 @@ jobs:
           gh pr edit "${{ steps.pr.outputs.number }}" --add-label necesita-humano
           gh pr comment "${{ steps.pr.outputs.number }}" --body "Este PR toca \`.github/\` o \`.claude/\`: no se aprueba automáticamente."
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         if: steps.pr.outputs.action == 'review'
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
