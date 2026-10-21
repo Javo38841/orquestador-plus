@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Builds
+dist/
+release/
+out/
+.angular/
+*.tsbuildinfo
+
+# Environment (only .env.example is versioned)
+.env
+.env.*
+!.env.example
+
+# Local app data used during development
+.data/
+
+# Tests
+coverage/
+test-results/
+playwright-report/
+
+# Claude Code
+.claude/settings.local.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
