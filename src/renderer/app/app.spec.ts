@@ -48,6 +48,7 @@ function fakeApi(overrides: Partial<AppInfo> = {}, bugs: Bug[] = []): Orquestado
     deleteBug: async () => false,
     listJournal: async () => [],
     saveJournalEntry: async () => ({ ok: true, entry: null }),
+    search: async () => [],
     getRemindersEnabled: async () => true,
     setRemindersEnabled: async (enabled: boolean) => enabled,
   };
@@ -116,6 +117,17 @@ describe('App', () => {
     TestBed.inject(ApplicationRef).tick();
 
     expect(el.querySelector('app-capture-panel')).not.toBeNull();
+  });
+
+  it('CP-10-09: Ctrl+K opens the search palette without touching quick capture', async () => {
+    const el = await render(fakeApi());
+    expect(el.querySelector('app-search-palette')).toBeNull();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', ctrlKey: true }));
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(el.querySelector('app-search-palette')).not.toBeNull();
+    expect(el.querySelector('app-capture-panel')).toBeNull();
   });
 
   it('CP-09-10: the sidebar shows the number of open bugs', async () => {

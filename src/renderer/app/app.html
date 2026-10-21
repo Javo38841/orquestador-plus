@@ -22,6 +22,8 @@
       <button
         type="button"
         class="mb-4 flex items-center justify-between rounded-md border border-line bg-surface px-3 py-2 text-sm text-muted"
+        data-testid="open-search"
+        (click)="searchOpen.set(true)"
       >
         <span>{{ 'app.searchAll' | transloco }}</span>
         <kbd class="font-mono text-xs">Ctrl K</kbd>
@@ -83,4 +85,8 @@
 
 @if (captureOpen()) {
   <app-capture-panel (closed)="captureOpen.set(false)" />
+}
+
+@if (searchOpen()) {
+  <app-search-palette (closed)="searchOpen.set(false)" />
 }

@@ -188,6 +188,43 @@ export const migrations: Migration[] = [
       ALTER TABLE tasks ADD COLUMN reminder_notified_at TEXT;
     `,
   },
+  {
+    version: 12,
+    name: 'global_search',
+    // One FTS5 table for every searchable kind. Triggers keep it in sync with the source
+    // tables, so any write path (create, edit, convert, delete) is reflected at once.
+    // unicode61 with remove_diacritics folds case and accents ("Información" ~ "informacion").
+    up: `
+      CREATE VIRTUAL TABLE search_index USING fts5(
+        kind UNINDEXED,
+        ref_id UNINDEXED,
+        title,
+        tokenize = 'unicode61 remove_diacritics 2'
+      );
+      INSERT INTO search_index (kind, ref_id, title) SELECT 'task', id, title FROM tasks;
+      INSERT INTO search_index (kind, ref_id, title) SELECT 'inbox', id, title FROM inbox_items;
+
+      CREATE TRIGGER search_tasks_insert AFTER INSERT ON tasks BEGIN
+        INSERT INTO search_index (kind, ref_id, title) VALUES ('task', new.id, new.title);
+      END;
+      CREATE TRIGGER search_tasks_update AFTER UPDATE OF title ON tasks BEGIN
+        UPDATE search_index SET title = new.title WHERE kind = 'task' AND ref_id = old.id;
+      END;
+      CREATE TRIGGER search_tasks_delete AFTER DELETE ON tasks BEGIN
+        DELETE FROM search_index WHERE kind = 'task' AND ref_id = old.id;
+      END;
+
+      CREATE TRIGGER search_inbox_insert AFTER INSERT ON inbox_items BEGIN
+        INSERT INTO search_index (kind, ref_id, title) VALUES ('inbox', new.id, new.title);
+      END;
+      CREATE TRIGGER search_inbox_update AFTER UPDATE OF title ON inbox_items BEGIN
+        UPDATE search_index SET title = new.title WHERE kind = 'inbox' AND ref_id = old.id;
+      END;
+      CREATE TRIGGER search_inbox_delete AFTER DELETE ON inbox_items BEGIN
+        DELETE FROM search_index WHERE kind = 'inbox' AND ref_id = old.id;
+      END;
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {

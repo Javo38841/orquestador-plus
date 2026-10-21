@@ -1,4 +1,13 @@
-import { Component, inject, OnInit, signal, viewChild } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  inject,
+  OnInit,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { isOverdue, localDate, type Task, type TaskError } from '../../../../shared/tasks';
 import {
@@ -262,6 +271,9 @@ const EMPTY_DRAFT: Draft = {
             <div
               class="grid grid-cols-[1fr_10rem_9rem_auto] items-center gap-4 border-b border-line px-5 py-3 last:border-b-0"
               data-testid="task-row"
+              [attr.data-task-id]="task.id"
+              [attr.data-highlighted]="task.id === highlightedId() ? 'true' : null"
+              [class.bg-surface]="task.id === highlightedId()"
             >
               <div class="min-w-0">
                 <label class="flex min-w-0 items-center gap-3">
@@ -391,8 +403,34 @@ export class TasksPage implements OnInit {
   protected readonly tab = signal<(typeof this.tabs)[number]>('tasks');
   private readonly tagsEditor = viewChild(TagsEditor);
 
+  private readonly route = inject(ActivatedRoute, { optional: true });
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly host = inject(ElementRef<HTMLElement>);
+  /** Task to point out, set when arriving from the global search (`?task=<id>`). */
+  protected readonly highlightedId = signal<number | null>(null);
+
   ngOnInit(): void {
-    void this.store.load();
+    const loaded = this.store.load();
+    const sub = this.route?.queryParamMap.subscribe((params) => {
+      const id = Number(params.get('task'));
+      void loaded.then(() => this.reveal(Number.isInteger(id) && id > 0 ? id : null));
+    });
+    this.destroyRef.onDestroy(() => sub?.unsubscribe());
+  }
+
+  /** Makes sure filters do not hide the task, then scrolls to it. */
+  private reveal(id: number | null): void {
+    this.highlightedId.set(id);
+    const task = id === null ? undefined : this.store.tasks().find((t) => t.id === id);
+    if (!task) return;
+    this.tab.set('tasks');
+    this.store.tagFilter.set(null);
+    if (task.status === 'done') this.store.showCompleted.set(true);
+    setTimeout(() =>
+      (this.host.nativeElement as HTMLElement)
+        .querySelector(`[data-task-id="${task.id}"]`)
+        ?.scrollIntoView?.({ block: 'center' }),
+    );
   }
 
   protected chip(task: Task): string {
