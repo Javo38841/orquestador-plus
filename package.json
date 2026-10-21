@@ -48,7 +48,7 @@
     "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4.1.12",
     "@types/better-sqlite3": "^9.6.0",
-    "@types/node": "^22.0.0",
+    "@types/node": "^26.6.5",
     "angular-eslint": "^22.6.0",
     "concurrently": "^10.0.6",
     "cross-env": "^10.1.0",
