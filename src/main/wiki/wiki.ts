@@ -34,6 +34,7 @@ class WikiError extends Error {
 }
 
 const EXTENSION = '.md';
+const TEMP_SUFFIX = '.tmp';
 
 function toSummary(row: NoteRow): NoteSummary {
   return { slug: row.slug, title: row.title, createdAt: row.created_at, updatedAt: row.updated_at };
@@ -44,6 +45,26 @@ function filePath(wiki: Wiki, slug: string): string {
   // Defense in depth: slugs are validated, but a note must never leave wiki/.
   if (path.dirname(resolved) !== path.resolve(wiki.dir)) throw new WikiError('invalid');
   return resolved;
+}
+
+/** Temp file next to the target; its name never ends in `.md`, so it is never a note. */
+function tempPath(target: string): string {
+  return path.join(path.dirname(target), `.${path.basename(target)}${TEMP_SUFFIX}`);
+}
+
+/**
+ * Writes through a temp file in the same folder and renames it over `target`, so a crash
+ * or a full disk never leaves a half-written note (RNF-08). The temp file is removed on failure.
+ */
+function writeFileAtomic(target: string, data: string): void {
+  const temp = tempPath(target);
+  try {
+    fs.writeFileSync(temp, data);
+    fs.renameSync(temp, target);
+  } catch (error) {
+    fs.rmSync(temp, { force: true });
+    throw error;
+  }
 }
 
 export function serializeNote(
@@ -179,17 +200,10 @@ export function createNote(wiki: Wiki, input: unknown, now: Date = new Date()): 
         )
         .run(slug, checked.title, key, stamp, stamp);
       indexLinks(wiki.db, Number(info.lastInsertRowid), checked.content);
-      try {
-        fs.writeFileSync(
-          filePath(wiki, slug),
-          serializeNote(checked.title, stamp, stamp, checked.content),
-          { flag: 'wx' },
-        );
-      } catch (error) {
-        // A file left over without index entry also counts as taken.
-        if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new WikiError('duplicate');
-        throw error;
-      }
+      const target = filePath(wiki, slug);
+      // A file left over without index entry also counts as taken.
+      if (fs.existsSync(target)) throw new WikiError('duplicate');
+      writeFileAtomic(target, serializeNote(checked.title, stamp, stamp, checked.content));
     })();
   } catch (error) {
     return failure(error);
@@ -243,7 +257,7 @@ export function updateNote(
         .prepare('UPDATE notes SET slug = ?, title = ?, title_key = ?, updated_at = ? WHERE id = ?')
         .run(nextSlug, checked.title, key, stamp, current.id);
       indexLinks(wiki.db, current.id, checked.content);
-      fs.writeFileSync(
+      writeFileAtomic(
         target,
         serializeNote(checked.title, current.created_at, stamp, checked.content),
       );
@@ -270,6 +284,19 @@ export function deleteNote(wiki: Wiki, slug: unknown): boolean {
   return true;
 }
 
+/** Deletes temp files left in `wiki/` by a crash in the middle of a save. */
+function removeOrphanTempFiles(dir: string): void {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (
+      entry.isFile() &&
+      entry.name.startsWith('.') &&
+      entry.name.endsWith(EXTENSION + TEMP_SUFFIX)
+    ) {
+      fs.rmSync(path.join(dir, entry.name), { force: true });
+    }
+  }
+}
+
 /**
  * Rebuilds the whole index from the files in `wiki/` (ADR-001): run at startup, so a
  * deleted `datos.db` loses nothing. A file that cannot be read, or whose title or name clashes
@@ -277,6 +304,7 @@ export function deleteNote(wiki: Wiki, slug: unknown): boolean {
  */
 export function rebuildIndex(wiki: Wiki): number {
   fs.mkdirSync(wiki.dir, { recursive: true });
+  removeOrphanTempFiles(wiki.dir);
   const names = fs
     .readdirSync(wiki.dir, { withFileTypes: true })
     .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(EXTENSION))

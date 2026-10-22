@@ -148,4 +148,17 @@ describe('inbox', () => {
       expect(listInbox(db)).toHaveLength(1);
     });
   });
+
+  it('CP-N08-02: a failure while classifying leaves the item and creates no task', () => {
+    const captured = captureItem(db, 'Algo');
+    if (!captured.ok) throw new Error('capture failed');
+    db.exec(
+      "CREATE TRIGGER fail_delete BEFORE DELETE ON inbox_items BEGIN SELECT RAISE(ABORT, 'boom'); END",
+    );
+
+    expect(() => convertToTask(db, captured.item.id, { title: 'Algo' })).toThrow('boom');
+
+    expect(listTasks(db)).toEqual([]);
+    expect(listInbox(db)).toHaveLength(1);
+  });
 });

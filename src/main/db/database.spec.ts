@@ -49,6 +49,35 @@ describe('openDatabase', () => {
     db.close();
   });
 
+  it('CP-N08-01: a freshly opened database reports journal_mode wal', () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orq-db-'));
+    const db = openDatabase(dir);
+
+    expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
+    db.close();
+  });
+
+  it('CP-N08-06: committed data survives when the connection is never closed', () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orq-db-'));
+    const live = path.join(dir, 'live');
+    const crashed = path.join(dir, 'crashed');
+    const db = openDatabase(live);
+    db.prepare(
+      "INSERT INTO inbox_items (title, source, created_at) VALUES ('x', 'quick_capture', 'now')",
+    ).run();
+
+    // Snapshot the files as a killed process would leave them: no checkpoint, no close.
+    fs.mkdirSync(crashed);
+    for (const name of fs.readdirSync(live)) {
+      fs.copyFileSync(path.join(live, name), path.join(crashed, name));
+    }
+    const reopened = openDatabase(crashed);
+
+    expect(reopened.prepare('SELECT title FROM inbox_items').all()).toEqual([{ title: 'x' }]);
+    reopened.close();
+    db.close();
+  });
+
   it('supports FTS5 for global search (RNF-05)', () => {
     const db = new Database(':memory:');
     db.exec('CREATE VIRTUAL TABLE search USING fts5(body)');
