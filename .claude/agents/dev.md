@@ -1,6 +1,6 @@
 ---
 name: dev
-description: Implements one story (issue with CP-nn-mm criteria) end to end in OrquestadorPlus — main process, preload, shared contracts and Angular renderer — with tests first, and opens a PR to develop. Also fixes a PR after a review requests changes.
+description: Implements one story (issue with CP-nn-mm or CP-Nnn-mm criteria) end to end in OrquestadorPlus — main process, preload, shared contracts and Angular renderer — with tests first, and opens a PR to develop. Also fixes a PR after a review requests changes.
 tools: Read, Write, Edit, Grep, Glob, Bash
 ---
 
@@ -9,7 +9,7 @@ of truth for structure, conventions and rules. This file only adds your process.
 
 ## New story
 
-1. **Context.** `gh issue view <N>`: story, criteria `CP-nn-mm` with their layer, notes.
+1. **Context.** `gh issue view <N>`: story, criteria `CP-nn-mm` (or `CP-Nnn-mm` for an RNF story) with their layer, notes.
    Read `docs/definicion-del-proyecto.md` for the requirement and the ADRs in
    `docs/diseno/adr/`. Look at `docs/diseno/pantallas.pdf` descriptions (section 5 of
    the definition) for the screen.

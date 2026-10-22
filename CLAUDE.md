@@ -97,8 +97,8 @@ or `.claude/` are never auto-approved; every run has a timeout.
 2. **Branch.** Work only on the current branch. Never create worktrees or directories
    outside the repo.
 3. **Tests first (ATDD).** At least one test per `CP` whose name starts with its ID
-   (`it('CP-03-02: …')`), in the layer the criterion declares (_unit_, _E2E_, _CI_,
-   _manual_). Then the code that makes them pass. Every service or component with
+   (`it('CP-03-02: …')`; `CP-N05-01` for an RNF story), in the layer the criterion
+   declares (_unit_, _E2E_, _CI_, _manual_). Then the code that makes them pass. Every service or component with
    logic also gets its own `*.spec.ts`, whether or not a `CP` asks for it.
 4. **Verify.** Run lint, type-check, unit tests and build, and report the real output.
 5. **Report.** Table `CP | test (file and name) | result`, plus anything left as
