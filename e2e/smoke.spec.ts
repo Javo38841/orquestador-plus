@@ -79,6 +79,7 @@ test('ADR-003: the renderer has no access to Node', async () => {
       'listNotes',
       'listPortalLinks',
       'listProjects',
+      'listSections',
       'listSnippets',
       'listTags',
       'listTasks',

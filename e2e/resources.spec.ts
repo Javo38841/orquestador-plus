@@ -55,13 +55,19 @@ async function workingSetMb(app: ElectronApplication, page: Page): Promise<numbe
   );
 }
 
+async function visitScreen(page: Page, path: string): Promise<void> {
+  // A click during the previous screen's first render can be dropped, so retry it.
+  await expect(async () => {
+    await page.locator(`nav a[href="/${path}"]`).click();
+    await expect(page).toHaveURL(new RegExp(`/${path}$`), { timeout: 2000 });
+  }).toPass({ timeout: 15_000 });
+}
+
 async function visitAllScreens(page: Page, paths: string[]): Promise<void> {
   for (const path of paths) {
-    // A click during the previous screen's first render can be dropped, so retry it.
-    await expect(async () => {
-      await page.locator(`nav a[href="/${path}"]`).click();
-      await expect(page).toHaveURL(new RegExp(`/${path}$`), { timeout: 2000 });
-    }).toPass({ timeout: 15_000 });
+    await visitScreen(page, path);
+    // The Wiki is full screen (RF-08): go back to the app to reach the next sidebar link.
+    if (path === 'wiki') await page.getByTestId('wiki-exit').click();
   }
 }
 
@@ -115,14 +121,13 @@ test('CP-N10-07: navigating 50 times through every screen grows memory by under 
   expect(paths.length).toBeGreaterThan(5);
 
   await visitAllScreens(page, paths);
-  await page.locator(`a[href$="/${paths[0]}"]`).first().click();
+  await visitScreen(page, paths[0]);
   const baseline = await workingSetMb(app, page);
 
   for (let round = 1; round < NAVIGATION_ROUNDS; round++) {
     await visitAllScreens(page, paths);
   }
-  await page.locator(`a[href$="/${paths[0]}"]`).first().click();
-  await page.waitForURL(new RegExp(`/${paths[0]}$`));
+  await visitScreen(page, paths[0]);
 
   const growth = (await workingSetMb(app, page)) - baseline;
   expect(growth).toBeLessThan(MEMORY_GROWTH_MB);
