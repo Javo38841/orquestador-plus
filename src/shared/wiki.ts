@@ -81,6 +81,29 @@ export function validateNoteInput(
 /** File that holds the title and order of a section; it is never a page. */
 export const SECTION_FILE = '_section.md';
 
+export interface SectionInput {
+  /** Shown in the sidebar and used as the folder name under `wiki/`. */
+  title: string;
+}
+
+export type SectionError = 'empty' | 'invalid' | 'duplicate' | 'io';
+
+export type SectionResult =
+  { ok: true; section: SectionSummary } | { ok: false; error: SectionError };
+
+/** Trims the title; it must be usable as a folder name directly under `wiki/` (no `/`, `..`). */
+export function validateSectionInput(
+  input: unknown,
+): { ok: true; title: string } | { ok: false; error: SectionError } {
+  if (typeof input !== 'object' || input === null) return { ok: false, error: 'invalid' };
+  const { title } = input as Record<string, unknown>;
+  if (typeof title !== 'string') return { ok: false, error: 'invalid' };
+  const trimmed = title.normalize('NFC').trim().replace(/\s+/g, ' ');
+  if (trimmed.length === 0) return { ok: false, error: 'empty' };
+  if (!isValidSection(trimmed)) return { ok: false, error: 'invalid' };
+  return { ok: true, title: trimmed };
+}
+
 /** Longest `description` kept from a frontmatter. */
 export const NOTE_DESCRIPTION_MAX_LENGTH = 500;
 
@@ -398,7 +421,8 @@ function byOrderThenName<T>(
 
 /**
  * Builds the sidebar tree: sections and their pages by `order`, then by name. A note whose
- * section is not in `sections` still gets one, titled with the folder name.
+ * section is not in `sections` still gets one, titled with the folder name; a section without
+ * pages is kept, so a newly created one shows up.
  */
 export function buildWikiTree(notes: NoteSummary[], sections: SectionSummary[]): WikiTree {
   const meta = new Map(sections.map((s) => [s.name, s] as const));
@@ -414,9 +438,10 @@ export function buildWikiTree(notes: NoteSummary[], sections: SectionSummary[]):
       (n) => n.order,
       (n) => n.title,
     );
-  const known: SectionSummary[] = [...grouped.keys()].map(
-    (name) => meta.get(name) ?? { name, title: name },
-  );
+  const known: SectionSummary[] = [
+    ...sections,
+    ...[...grouped.keys()].filter((name) => !meta.has(name)).map((name) => ({ name, title: name })),
+  ];
   return {
     pages: pageOrder(root),
     sections: byOrderThenName(

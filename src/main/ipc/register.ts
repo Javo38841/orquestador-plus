@@ -45,6 +45,7 @@ import {
 } from '../settings/settings';
 import {
   createNote,
+  createSection,
   deleteNote,
   getNote,
   listNotes,
@@ -127,6 +128,9 @@ export function registerIpcHandlers(
     withWiki((w) => listNotes(w, section)),
   );
   ipcMain.handle(IpcChannel.listSections, () => withWiki(listSections));
+  ipcMain.handle(IpcChannel.createSection, (_event, input: unknown) =>
+    withWiki((w) => createSection(w, input)),
+  );
   ipcMain.handle(IpcChannel.getNote, (_event, slug: unknown) => withWiki((w) => getNote(w, slug)));
   ipcMain.handle(IpcChannel.createNote, (_event, input: unknown) =>
     withWiki((w) => createNote(w, input)),

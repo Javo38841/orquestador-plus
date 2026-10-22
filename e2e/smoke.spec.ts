@@ -56,6 +56,7 @@ test('ADR-003: the renderer has no access to Node', async () => {
       'createNote',
       'createPortalLink',
       'createProject',
+      'createSection',
       'createSnippet',
       'createTask',
       'createTopic',

@@ -20,6 +20,7 @@ const api: OrquestadorApi = {
   deleteProject: (id) => ipcRenderer.invoke(IpcChannel.deleteProject, id),
   listNotes: (section) => ipcRenderer.invoke(IpcChannel.listNotes, section),
   listSections: () => ipcRenderer.invoke(IpcChannel.listSections),
+  createSection: (input) => ipcRenderer.invoke(IpcChannel.createSection, input),
   getNote: (slug) => ipcRenderer.invoke(IpcChannel.getNote, slug),
   createNote: (input) => ipcRenderer.invoke(IpcChannel.createNote, input),
   updateNote: (slug, input) => ipcRenderer.invoke(IpcChannel.updateNote, slug, input),

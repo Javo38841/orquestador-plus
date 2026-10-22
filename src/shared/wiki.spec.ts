@@ -10,6 +10,7 @@ import {
   parseMarkdown,
   slugFromTitle,
   validateNoteInput,
+  validateSectionInput,
   type NoteSummary,
   type SectionSummary,
   type WikiTree,
@@ -207,6 +208,30 @@ describe('wiki tree', () => {
     ]);
     expect(tree.sections[0].pages.map((p) => p.slug)).toEqual(['alfa', 'beta', 'zeta']);
     expect(tree.pages.map((p) => p.slug)).toEqual(['suelta-a', 'suelta-b']);
+  });
+
+  it('CP-08-67: a section without pages still shows in the tree', () => {
+    const tree = buildWikiTree([], [{ name: 'Guías', title: 'Guías' }]);
+    expect(tree.sections).toEqual([{ name: 'Guías', title: 'Guías', pages: [] }]);
+  });
+
+  it('CP-08-68: validateSectionInput trims and rejects empty, unsafe or reserved names', () => {
+    expect(validateSectionInput({ title: '  Guías   prácticas ' })).toEqual({
+      ok: true,
+      title: 'Guías prácticas',
+    });
+    for (const title of ['', '   ', '\t']) {
+      expect(validateSectionInput({ title })).toEqual({
+        ok: false,
+        error: 'empty',
+      });
+    }
+    for (const title of ['a/b', '..', '../x', 'a\\b', '.git', '_x', 'CON', 'x.', 'a:b']) {
+      expect(validateSectionInput({ title }), title).toEqual({ ok: false, error: 'invalid' });
+    }
+    for (const input of [null, 'Guías', { title: 3 }, {}]) {
+      expect(validateSectionInput(input)).toEqual({ ok: false, error: 'invalid' });
+    }
   });
 
   it('CP-08-21: an empty wiki gives an empty tree', () => {
