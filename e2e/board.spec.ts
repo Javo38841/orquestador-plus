@@ -1,3 +1,4 @@
+import http from 'node:http';
 import { expect, test } from '@playwright/test';
 import { launchApp, type LaunchedApp } from './launch';
 
@@ -24,6 +25,11 @@ async function addTask(page: LaunchedApp['page'], title: string, project?: strin
 
 const column = (page: LaunchedApp['page'], status: string) =>
   page.locator(`[data-testid="board-column"][data-status="${status}"]`);
+
+const pickBoard = async (page: LaunchedApp['page'], value: string) => {
+  await page.getByTestId('board-select').click();
+  await page.locator(`[data-testid="board-select-option"][data-value="${value}"]`).click();
+};
 
 async function moveCard(page: LaunchedApp['page'], title: string, target: string) {
   const card = page.getByTestId('board-card').filter({ hasText: title });
@@ -89,7 +95,8 @@ test('CP-04-06: a project created from the board is in the list and combo box af
   await page.getByTestId('project-name').fill('sin-tareas');
   await page.getByTestId('project-name').press('Enter');
   await expect(page.getByTestId('board-project-item')).toHaveText(['sin-tareas']);
-  await expect(page.getByTestId('board-select').locator('option')).toHaveText([
+  await page.getByTestId('board-select').click();
+  await expect(page.getByTestId('board-select-option')).toHaveText([
     'General',
     'Sueltas',
     'sin-tareas',
@@ -100,7 +107,7 @@ test('CP-04-06: a project created from the board is in the list and combo box af
   launched = reopened;
   await reopened.page.getByRole('link', { name: 'Tablero' }).click();
   await expect(reopened.page.getByTestId('board-project-item')).toHaveText(['sin-tareas']);
-  await expect(reopened.page.getByTestId('board-select')).toHaveValue(/\d+/);
+  await expect(reopened.page.getByTestId('board-select')).toHaveAttribute('data-value', /\d+/);
 });
 
 test('CP-05-10: "Sueltas" shows only tasks without a project and is remembered after reopening', async () => {
@@ -109,7 +116,7 @@ test('CP-05-10: "Sueltas" shows only tasks without a project and is remembered a
   await addTask(page, 'Tarea suelta');
   await addTask(page, 'Tarea con proyecto', 'api-gateway');
   await page.getByRole('link', { name: 'Tablero' }).click();
-  await page.getByTestId('board-select').selectOption('loose');
+  await pickBoard(page, 'loose');
   await expect(page.getByTestId('board-card')).toHaveCount(1);
   await expect(page.getByTestId('board-card').first()).toContainText('Tarea suelta');
 
@@ -117,7 +124,84 @@ test('CP-05-10: "Sueltas" shows only tasks without a project and is remembered a
   const reopened = await launchApp(dataDir);
   launched = reopened;
   await reopened.page.getByRole('link', { name: 'Tablero' }).click();
-  await expect(reopened.page.getByTestId('board-select')).toHaveValue('loose');
+  await expect(reopened.page.getByTestId('board-select')).toHaveAttribute('data-value', 'loose');
   await expect(reopened.page.getByTestId('board-card')).toHaveCount(1);
   await expect(reopened.page.getByTestId('board-card').first()).toContainText('Tarea suelta');
+});
+
+function postReport(port: number, token: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port,
+        method: 'POST',
+        path: '/reportar',
+        headers: { 'content-type': 'application/json' },
+      },
+      (res) => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode ?? 0));
+      },
+    );
+    req.on('error', reject);
+    req.end(JSON.stringify({ token, name: 'Ana Pérez', description: 'El login no responde' }));
+  });
+}
+
+test('CP-05-28: Tablero shows the four colored columns, the report in Entrantes, and works by keyboard', async () => {
+  const { page } = launched;
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const yesterday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  await page.getByRole('link', { name: 'Tareas' }).click();
+  await page.getByTestId('new-task').click();
+  await page.getByTestId('task-title').fill('Vencida ayer');
+  await page.getByTestId('task-due').fill(yesterday);
+  await page.getByTestId('task-save').click();
+  await expect(page.getByTestId('task-row').filter({ hasText: 'Vencida ayer' })).toBeVisible();
+  await addTask(page, 'Con proyecto', 'api-gateway');
+
+  await page.getByRole('link', { name: 'Portal de reportes' }).click();
+  await page.getByTestId('portal-toggle').click();
+  await expect(page.getByTestId('portal-state')).toHaveText('Portal encendido');
+  await page.getByTestId('link-create').click();
+  await expect(page.getByTestId('portal-link')).toHaveCount(1);
+  const { token, port } = await page.evaluate(async () => {
+    const api = (
+      window as unknown as {
+        orquestador: {
+          listPortalLinks(): Promise<{ token: string }[]>;
+          getPortalStatus(): Promise<{ port: number }>;
+        };
+      }
+    ).orquestador;
+    const [link] = await api.listPortalLinks();
+    return { token: link!.token, port: (await api.getPortalStatus()).port };
+  });
+  expect(await postReport(port, token)).toBe(201);
+
+  await page.getByRole('link', { name: 'Tablero' }).click();
+  const titles = page.getByTestId('board-column-title');
+  await expect(titles).toHaveText([/Entrantes · 1/, /Por hacer · 2/, /En curso · 0/, /Hecho · 0/]);
+  await expect(column(page, 'inbox')).toContainText('El login no responde');
+  await expect(column(page, 'inbox')).toContainText('Sin revisar');
+  await expect(
+    column(page, 'todo').getByTestId('board-card').filter({ hasText: 'Vencida ayer' }),
+  ).toContainText('Venció ayer');
+
+  // Classify the report as a task with the keyboard.
+  await column(page, 'inbox').getByTestId('inbox-classify-task').focus();
+  await page.keyboard.press('Enter');
+  await expect(column(page, 'inbox').getByTestId('inbox-card')).toHaveCount(0);
+  await expect(column(page, 'todo')).toContainText('El login no responde');
+
+  // Move a card to "En curso" with the keyboard: Enter, arrows, Enter.
+  const card = column(page, 'todo').getByTestId('board-card').filter({ hasText: 'Con proyecto' });
+  await card.focus();
+  await page.keyboard.press('Enter');
+  await expect(card.getByRole('menuitem', { name: 'En curso' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(column(page, 'in_progress')).toContainText('Con proyecto');
 });
