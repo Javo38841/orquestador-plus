@@ -20,6 +20,8 @@ const common = {
 const targets = [
   { ...common, entryPoints: ['src/main/main.ts'], outfile: 'dist/main/main.js' },
   { ...common, entryPoints: ['src/preload/preload.ts'], outfile: 'dist/preload/preload.js' },
+  // Test-data seeder for E2E and manual runs (RNF-05). Not part of the packaged app.
+  { ...common, entryPoints: ['src/main/testing/seed-cli.ts'], outfile: 'dist/seed/seed.js' },
 ];
 
 if (watch) {
