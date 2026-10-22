@@ -237,4 +237,22 @@ describe('TasksStore', () => {
     expect(store.pendingCount()).toBe(2);
     expect(store.seriesCount()).toBe(1);
   });
+
+  it('CP-05-26: create saves the task and sends it to the requested column; an empty title is rejected', async () => {
+    const { store, api } = setup([task(9)]);
+    expect(await store.create({ title: '  ', dueDate: null, projectId: null }, 'done')).toBe(
+      'empty',
+    );
+    expect(api.createTask).not.toHaveBeenCalled();
+
+    expect(
+      await store.create({ title: 'Nueva', dueDate: null, projectId: null }, 'todo'),
+    ).toBeNull();
+    expect(api.setTaskStatus).not.toHaveBeenCalled();
+    expect(
+      await store.create({ title: 'Otra', dueDate: null, projectId: null }, 'done'),
+    ).toBeNull();
+    expect(api.setTaskStatus).toHaveBeenCalledWith(9, 'done');
+    expect(api.listTasks).toHaveBeenCalled();
+  });
 });

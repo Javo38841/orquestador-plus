@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildBoard, DONE_WINDOW_DAYS, isBoardSelection, parseBoardSelection } from './board';
+import {
+  buildBoard,
+  DONE_WINDOW_DAYS,
+  isBoardSelection,
+  parseBoardSelection,
+  splitTags,
+} from './board';
 import type { Task } from './tasks';
 
 const NOW = new Date('2026-03-20T12:00:00.000Z');
@@ -137,5 +143,33 @@ describe('buildBoard', () => {
       for (const bad of [null, 3, '3', {}, { projectId: 1.5 }, { projectId: null }, 'other'])
         expect(isBoardSelection(bad)).toBe(false);
     });
+  });
+});
+
+describe('splitTags', () => {
+  const names = Array.from({ length: 10 }, (_, i) => `t${i}`);
+  // t9 is the most used, then t8, ... t0 the least.
+  const tasks = names.flatMap((name, i) => Array.from({ length: i + 1 }, () => ({ tags: [name] })));
+
+  it('CP-07-09: with 8 or fewer tags all show and there is no rest', () => {
+    expect(splitTags(tasks, names.slice(0, 8), null)).toEqual({
+      shown: ['t7', 't6', 't5', 't4', 't3', 't2', 't1', 't0'],
+      rest: [],
+    });
+    expect(splitTags([], [], null)).toEqual({ shown: [], rest: [] });
+  });
+
+  it('CP-07-09: with more than 8 the 8 most used show and the rest is collapsed', () => {
+    const { shown, rest } = splitTags(tasks, names, null);
+    expect(shown).toEqual(['t9', 't8', 't7', 't6', 't5', 't4', 't3', 't2']);
+    expect(rest).toEqual(['t1', 't0']);
+  });
+
+  it('CP-07-09: a chosen tag outside the 8 most used stays visible', () => {
+    const { shown, rest } = splitTags(tasks, names, 't0');
+    expect(shown).toHaveLength(8);
+    expect(shown).toContain('t0');
+    expect(rest).toContain('t2');
+    expect(rest).not.toContain('t0');
   });
 });

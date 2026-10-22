@@ -66,6 +66,8 @@ function fakeApi(overrides: Partial<AppInfo> = {}, bugs: Bug[] = []): Orquestado
     createPortalLink: async () => ({ ok: false, error: 'invalid_project' }),
     revokePortalLink: async () => false,
     getBoardProject: async () => 'general' as const,
+    getBoardPanelOpen: async () => true,
+    setBoardPanelOpen: async (open: boolean) => open,
     setBoardProject: async (selection: 'general' | 'loose' | { projectId: number }) => selection,
     getRemindersEnabled: async () => true,
     setRemindersEnabled: async (enabled: boolean) => enabled,

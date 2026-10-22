@@ -206,9 +206,10 @@ Cubre: RF-04, RF-05, RF-07, RF-15
 
 Las tareas en movimiento, con y sin proyecto, en un kanban.
 
-- Columnas: **Entrantes** (reportes del portal sin revisar), **Por hacer**, **En curso** y **Hecho**.
-- Arriba: un combo box de tablero (“General” por defecto, “Sueltas” —solo las tareas sin proyecto— o un proyecto; RF-04) y chips por etiqueta. Un panel lateral “Proyectos” lista los proyectos y permite crear uno nuevo; el último tablero elegido se recuerda.
-- Cada tarjeta muestra proyecto o “Suelta”, etiquetas, repetición y fecha.
+- Columnas, de izquierda a derecha, cada una con su color y su conteo en el encabezado (“ENTRANTES · 2”): **Entrantes** (ámbar; solo los reportes del portal sin revisar, que se clasifican como tarea o se descartan desde la tarjeta; no tiene botón “+”), **Por hacer** (neutro), **En curso** (azul) y **Hecho** (verde, últimos 7 días). Los tres últimos tienen un botón “+” para crear una tarea en esa columna. Entrantes se ve igual en cualquier tablero y no le afecta el filtro de etiquetas.
+- Arriba: un combo box de tablero con el estilo del diseño (“General” por defecto, “Sueltas” —solo las tareas sin proyecto— o un proyecto; RF-04) y chips por etiqueta: se muestran las 8 más usadas y un “más…” despliega el resto; la opción elegida se resalta en turquesa.
+- Panel lateral plegable “Proyectos” (se recuerda si está abierto o cerrado): lista los proyectos y permite crear uno nuevo; el último tablero elegido también se recuerda. Con ventana angosta las columnas se desplazan en horizontal.
+- Tarjetas compactas: título (recortado si es largo), proyecto o “Suelta”, etiquetas (con “+N” si sobran), repetición y fecha con texto y color (“Venció ayer”, “Mañana”, “Completada ayer”). “Mover a…” vive en un menú que aparece al pasar el mouse o enfocar la tarjeta y se opera con teclado.
 
 ### 5.5 Bugs e incidencias — pág. 4
 
@@ -266,7 +267,7 @@ Un formulario temporal para que otras personas reporten problemas. Solo puede cr
 | RF-01 | Must | Hoy (captura rápida), Bandeja de entrada | ✅ Diseñado |
 | RF-02 | Must | Tareas, Tablero, Hoy · falta el formulario de crear/editar tarea | 🟡 Parcial |
 | RF-03 | Must | Hoy | ✅ Diseñado |
-| RF-04 | Must | Tablero con combo box (General, Sueltas o proyecto) y creación de proyectos · falta renombrar, archivar y eliminar proyectos | 🟡 Parcial |
+| RF-04 | Must | Tablero con combo box (General, Sueltas o proyecto), panel plegable y creación de proyectos · falta renombrar, archivar y eliminar proyectos | 🟡 Parcial |
 | RF-05 | Must | Tablero (General y Sueltas), Tareas | ✅ Diseñado |
 | RF-06 | Must | Tareas (Series recurrentes) · falta el editor de repetición | 🟡 Parcial |
 | RF-07 | Must | Todas (chips #etiqueta), filtros en Tablero y Snippets | ✅ Diseñado |
