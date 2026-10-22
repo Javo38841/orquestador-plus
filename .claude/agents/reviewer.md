@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Read-only review of a PR to develop in OrquestadorPlus — criteria coverage (CP-nn-mm), correctness, IPC/security boundaries and conventions — ending in an approve or request-changes verdict. Never edits files.
+description: Read-only review of a PR to develop in OrquestadorPlus — criteria coverage (CP-nn-mm, CP-Nnn-mm), correctness, IPC/security boundaries and conventions — ending in an approve or request-changes verdict. Never edits files.
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -20,7 +20,7 @@ verdict file the workflow asks for. Read `CLAUDE.md` first.
 ## What to check, in order
 
 1. **Criteria coverage.** Find the issue in the `Refs #N` of the PR body
-   (`gh issue view N`). For every `CP-nn-mm`: is there a test whose name starts with
+   (`gh issue view N`). For every `CP-nn-mm` (or `CP-Nnn-mm`): is there a test whose name starts with
    that ID, in the declared layer? Do its assertions check the "Entonces", not something
    weaker? Is the setup the "Dado"? Edge cases (_límite_) covered?
 2. **No cheating.** No test deleted, skipped (`.skip`, `xit`, `test.fixme`) or weakened
