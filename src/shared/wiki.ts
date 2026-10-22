@@ -430,3 +430,68 @@ export function buildWikiTree(notes: NoteSummary[], sections: SectionSummary[]):
     })),
   };
 }
+
+/** An entry of "En esta página": a `##` or `###` heading with a unique id. */
+export interface TocEntry {
+  id: string;
+  level: 2 | 3;
+  text: string;
+}
+
+type HeadingBlock = Extract<Block, { type: 'heading' }>;
+
+function inlineText(parts: Inline[]): string {
+  return parts.map((p) => (p.type === 'link' ? p.label : p.text)).join('');
+}
+
+function headingId(text: string): string {
+  const base = text
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '');
+  return base === '' ? 'seccion' : base;
+}
+
+/** `##` / `###` headings in document order (callout contents included), code blocks excluded. */
+function collectHeadings(blocks: Block[], into: { block: HeadingBlock; entry: TocEntry }[]): void {
+  for (const block of blocks) {
+    if (block.type === 'callout') collectHeadings(block.blocks, into);
+    else if (block.type === 'heading' && (block.level === 2 || block.level === 3)) {
+      const text = inlineText(block.inline).trim();
+      if (text === '') continue;
+      const base = headingId(text);
+      const taken = new Set(into.map((h) => h.entry.id));
+      let id = base;
+      for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+      into.push({ block, entry: { id, level: block.level, text } });
+    }
+  }
+}
+
+/** Ids of the `##` / `###` heading blocks, so the reading view and the index agree. */
+export function headingIds(blocks: Block[]): Map<Block, string> {
+  const found: { block: HeadingBlock; entry: TocEntry }[] = [];
+  collectHeadings(blocks, found);
+  return new Map(found.map((h) => [h.block, h.entry.id] as const));
+}
+
+/** Index of a page: its `##` and `###` headings in order. `#`, `####`+ and code are left out. */
+export function extractToc(content: string): TocEntry[] {
+  const found: { block: HeadingBlock; entry: TocEntry }[] = [];
+  collectHeadings(parseMarkdown(content), found);
+  return found.map((h) => h.entry);
+}
+
+export interface PageNavigation {
+  previous: NoteSummary | null;
+  next: NoteSummary | null;
+}
+
+/** Previous / next page in sidebar order (loose pages, then each section), across sections. */
+export function pageNavigation(tree: WikiTree, slug: string): PageNavigation {
+  const pages = [...tree.pages, ...tree.sections.flatMap((s) => s.pages)];
+  const at = pages.findIndex((p) => p.slug === slug);
+  if (at === -1) return { previous: null, next: null };
+  return { previous: pages[at - 1] ?? null, next: pages[at + 1] ?? null };
+}

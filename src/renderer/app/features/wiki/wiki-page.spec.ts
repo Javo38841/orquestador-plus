@@ -320,3 +320,126 @@ describe('WikiPage', () => {
     });
   });
 });
+
+describe('WikiPage right column and footer', () => {
+  const long = (slug: string, content: string, backlinks: NoteSummary[] = []): Note => ({
+    ...summary(slug),
+    updatedAt: '2026-10-20T15:00:00.000Z',
+    content,
+    links: [],
+    backlinks,
+  });
+  const body = '## Uno\ntexto\n### Dos\ntexto\n## Tres\ntexto';
+  const fixtures = (): Fixtures => ({
+    notes: [summary('A'), summary('B'), summary('C')],
+    notesByContent: {
+      A: long('A', 'sin títulos'),
+      B: long('B', body, [summary('A')]),
+      C: long('C', 'fin'),
+    },
+  });
+  const text = (el: HTMLElement, id: string, i = 0) =>
+    el.querySelectorAll(`[data-testid="${id}"]`)[i]?.textContent?.trim();
+
+  it('CP-08-37: shows the index, backlinks, edit button, long date and neighbours', async () => {
+    const { el, click } = await render(undefined, fixtures());
+    await click('note-item', 1);
+
+    expect(text(el, 'toc')).toContain('En esta página');
+    expect(el.querySelectorAll('[data-testid="toc-item"]')).toHaveLength(3);
+    expect(text(el, 'backlinks')).toContain('Enlaces entrantes');
+    expect(text(el, 'backlink')).toBe('A');
+    expect(text(el, 'page-edit')).toBe('Editar página');
+    expect(text(el, 'page-updated')).toBe('Última actualización: 20 de octubre de 2026');
+    expect(text(el, 'page-prev')).toContain('Anterior');
+    expect(text(el, 'page-next')).toContain('Siguiente');
+  });
+
+  it('CP-08-38: a page without headings or backlinks shows empty states', async () => {
+    const { el, click } = await render(undefined, fixtures());
+    await click('note-item', 0);
+
+    expect(el.querySelector('[data-testid="toc-empty"]')).not.toBeNull();
+    expect(el.querySelectorAll('[data-testid="toc-item"]')).toHaveLength(0);
+    expect(text(el, 'backlinks')).toContain('Ninguna nota enlaza a esta.');
+  });
+
+  it('CP-08-36: the first page has no previous and the last has no next', async () => {
+    const { el, click } = await render(undefined, fixtures());
+    await click('note-item', 0);
+    expect(el.querySelector('[data-testid="page-prev"]')).toBeNull();
+    expect(el.querySelector('[data-testid="page-next"]')).not.toBeNull();
+
+    await click('note-item', 2);
+    expect(el.querySelector('[data-testid="page-next"]')).toBeNull();
+    expect(el.querySelector('[data-testid="page-prev"]')).not.toBeNull();
+  });
+
+  it('CP-08-39: pressing an index entry scrolls to its heading and highlights it', async () => {
+    const { el, click } = await render(undefined, fixtures());
+    await click('note-item', 1);
+    const heading = el.querySelector<HTMLElement>('[data-heading-id="tres"]')!;
+    heading.scrollIntoView = vi.fn();
+
+    await click('toc-item', 2);
+
+    expect(heading.scrollIntoView).toHaveBeenCalled();
+    const current = el.querySelectorAll('[data-testid="toc-item"][aria-current="location"]');
+    expect(current).toHaveLength(1);
+    expect(current[0].getAttribute('data-toc-id')).toBe('tres');
+  });
+
+  it('CP-08-40: scrolling highlights only the heading that is currently visible', async () => {
+    const { el, click, settle } = await render(undefined, fixtures());
+    await click('note-item', 1);
+    const scroller = el.querySelector<HTMLElement>('[data-testid="wiki-scroll"]')!;
+    const tops: Record<string, number> = { uno: -300, dos: 10, tres: 400 };
+    scroller.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
+    for (const [id, top] of Object.entries(tops)) {
+      el.querySelector<HTMLElement>(`[data-heading-id="${id}"]`)!.getBoundingClientRect = () =>
+        ({ top }) as DOMRect;
+    }
+
+    scroller.dispatchEvent(new Event('scroll'));
+    await settle();
+
+    const current = el.querySelectorAll('[data-testid="toc-item"][aria-current="location"]');
+    expect(current).toHaveLength(1);
+    expect(current[0].getAttribute('data-toc-id')).toBe('dos');
+  });
+
+  it('CP-08-41: backlinks, previous and next open the page in wiki mode', async () => {
+    const { el, click } = await render(undefined, fixtures());
+    await click('note-item', 1);
+
+    await click('backlink');
+    expect(text(el, 'note-view-title')).toBe('A');
+
+    await click('page-next');
+    expect(text(el, 'note-view-title')).toBe('B');
+    await click('page-prev');
+    expect(text(el, 'note-view-title')).toBe('A');
+  });
+
+  it('CP-08-42: "Editar página" opens the editor with the page', async () => {
+    const { el, click } = await render(undefined, fixtures());
+    await click('note-item', 1);
+    await click('page-edit');
+    expect(el.querySelector('[data-testid="note-editor"]')).not.toBeNull();
+    expect((el.querySelector('[data-testid="note-content"]') as HTMLTextAreaElement).value).toBe(
+      body,
+    );
+  });
+
+  it('CP-08-43: index entries, backlinks, edit and neighbours are native buttons reachable by Tab', async () => {
+    const { el, click } = await render(undefined, fixtures());
+    await click('note-item', 1);
+    const ids = ['toc-item', 'backlink', 'page-edit', 'page-prev', 'page-next'];
+    for (const id of ids) {
+      const control = el.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
+      expect(control.tagName).toBe('BUTTON');
+      expect(control.getAttribute('tabindex')).toBeNull();
+      expect(control.className).toContain('focus-visible:ring');
+    }
+  });
+});

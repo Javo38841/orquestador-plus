@@ -1,6 +1,6 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, ElementRef, inject, OnInit, signal, viewChild } from '@angular/core';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
-import type { NoteError } from '../../../../shared/wiki';
+import { extractToc, pageNavigation, type NoteError } from '../../../../shared/wiki';
 import { SearchLauncher } from '../search/search-launcher';
 import { NoteBody } from './note-body';
 import { WikiMode } from './wiki-mode';
@@ -114,7 +114,12 @@ interface Draft {
           />
         }
       </nav>
-      <section class="min-w-0 overflow-y-auto px-10 py-8">
+      <section
+        #scroller
+        class="min-w-0 overflow-y-auto px-10 py-8"
+        data-testid="wiki-scroll"
+        (scroll)="updateActive()"
+      >
         @if (editing() && draft(); as d) {
           <form
             class="space-y-3"
@@ -199,9 +204,6 @@ interface Draft {
                 @if (note.description; as description) {
                   <p class="mt-1 text-muted" data-testid="note-description">{{ description }}</p>
                 }
-                <p class="text-xs text-muted">
-                  {{ 'wiki.updated' | transloco }} {{ date(note.updatedAt) }}
-                </p>
               </div>
               <div class="flex gap-2 text-sm">
                 <button
@@ -233,33 +235,117 @@ interface Draft {
                 }
               </div>
             </div>
-            <app-note-body
-              [content]="note.content"
-              [slugs]="store.slugByKey()"
-              [pageTitle]="note.title"
-              (openLink)="guard(openNote, $event)"
-            />
-            <aside class="mt-8 border-t border-line pt-4" data-testid="backlinks">
-              <h3 class="mb-2 text-sm font-semibold">{{ 'wiki.backlinks' | transloco }}</h3>
-              @if (note.backlinks.length === 0) {
-                <p class="text-sm text-muted">{{ 'wiki.noBacklinks' | transloco }}</p>
-              } @else {
-                <ul class="space-y-1 text-sm">
-                  @for (b of note.backlinks; track b.slug) {
-                    <li>
+            <div class="grid gap-8 lg:grid-cols-[1fr_14rem]">
+              <div class="min-w-0">
+                <app-note-body
+                  [content]="note.content"
+                  [slugs]="store.slugByKey()"
+                  [pageTitle]="note.title"
+                  (openLink)="guard(openNote, $event)"
+                />
+                <footer class="mt-8 space-y-4 border-t border-line pt-4" data-testid="page-footer">
+                  <div class="flex flex-wrap items-center justify-between gap-3 text-sm">
+                    <button
+                      type="button"
+                      class="rounded-md border border-line px-3 py-1 outline-none hover:border-accent focus-visible:ring-2 focus-visible:ring-accent"
+                      data-testid="page-edit"
+                      (click)="startEdit()"
+                    >
+                      {{ 'wiki.editPage' | transloco }}
+                    </button>
+                    <span class="text-xs text-muted" data-testid="page-updated">
+                      {{ 'wiki.lastUpdated' | transloco: { date: longDate(note.updatedAt) } }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between gap-3 text-sm">
+                    @if (navigation().previous; as previous) {
                       <button
                         type="button"
-                        class="text-accent underline"
-                        data-testid="backlink"
-                        (click)="guard(openNote, b.slug)"
+                        class="rounded-md border border-line px-3 py-2 text-left outline-none hover:border-accent focus-visible:ring-2 focus-visible:ring-accent"
+                        data-testid="page-prev"
+                        (click)="guard(openNote, previous.slug)"
                       >
-                        {{ b.title }}
+                        <span class="block text-xs text-muted">{{
+                          'wiki.previous' | transloco
+                        }}</span>
+                        {{ previous.title }}
                       </button>
-                    </li>
+                    } @else {
+                      <span></span>
+                    }
+                    @if (navigation().next; as next) {
+                      <button
+                        type="button"
+                        class="rounded-md border border-line px-3 py-2 text-right outline-none hover:border-accent focus-visible:ring-2 focus-visible:ring-accent"
+                        data-testid="page-next"
+                        (click)="guard(openNote, next.slug)"
+                      >
+                        <span class="block text-xs text-muted">{{ 'wiki.next' | transloco }}</span>
+                        {{ next.title }}
+                      </button>
+                    }
+                  </div>
+                </footer>
+              </div>
+              <aside
+                class="space-y-6 text-sm lg:sticky lg:top-0 lg:self-start"
+                data-testid="page-aside"
+              >
+                <nav [attr.aria-label]="'wiki.onThisPage' | transloco" data-testid="toc">
+                  <h3 class="mb-2 text-xs font-semibold tracking-widest text-muted uppercase">
+                    {{ 'wiki.onThisPage' | transloco }}
+                  </h3>
+                  @if (toc().length === 0) {
+                    <p class="text-muted" data-testid="toc-empty">
+                      {{ 'wiki.noHeadings' | transloco }}
+                    </p>
+                  } @else {
+                    <ul class="space-y-1">
+                      @for (entry of toc(); track entry.id) {
+                        <li [class.ml-3]="entry.level === 3">
+                          <button
+                            type="button"
+                            class="w-full rounded px-1 py-0.5 text-left outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+                            [class]="
+                              entry.id === activeId() ? 'font-semibold text-accent' : 'text-muted'
+                            "
+                            [attr.aria-current]="entry.id === activeId() ? 'location' : null"
+                            [attr.data-toc-id]="entry.id"
+                            data-testid="toc-item"
+                            (click)="goToHeading(entry.id)"
+                          >
+                            {{ entry.text }}
+                          </button>
+                        </li>
+                      }
+                    </ul>
                   }
-                </ul>
-              }
-            </aside>
+                </nav>
+                <section data-testid="backlinks">
+                  <h3 class="mb-2 text-xs font-semibold tracking-widest text-muted uppercase">
+                    {{ 'wiki.backlinks' | transloco }}
+                  </h3>
+                  @if (note.backlinks.length === 0) {
+                    <p class="text-muted">{{ 'wiki.noBacklinks' | transloco }}</p>
+                  } @else {
+                    <ul class="space-y-1">
+                      @for (b of note.backlinks; track b.slug) {
+                        <li>
+                          <button
+                            type="button"
+                            class="rounded text-left text-accent underline outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                            data-testid="backlink"
+                            (click)="guard(openNote, b.slug)"
+                          >
+                            {{ b.title }}
+                          </button>
+                        </li>
+                      }
+                    </ul>
+                  }
+                </section>
+              </aside>
+            </div>
           </article>
         } @else {
           <p class="rounded-lg border border-line bg-surface px-5 py-4 text-sm text-muted">
@@ -279,6 +365,15 @@ export class WikiPage implements OnInit {
   protected readonly draft = signal<Draft | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly confirmingDelete = signal(false);
+  private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
+  /** Index entry the reader is on; null = the first one. */
+  private readonly reached = signal<string | null>(null);
+  protected readonly toc = computed(() => extractToc(this.store.current()?.content ?? ''));
+  protected readonly activeId = computed(() => this.reached() ?? this.toc()[0]?.id ?? null);
+  protected readonly navigation = computed(() => {
+    const slug = this.store.current()?.slug;
+    return slug ? pageNavigation(this.store.tree(), slug) : { previous: null, next: null };
+  });
   /** Action waiting for the user to confirm discarding unsaved changes. */
   protected readonly pending = signal<(() => void) | null>(null);
   /** Slug of the note being edited; null while creating a new one. */
@@ -309,8 +404,42 @@ export class WikiPage implements OnInit {
 
   protected readonly openNote = (slug: string): void => {
     this.stopEditing();
-    void this.store.openNote(slug);
+    this.reached.set(null);
+    void this.store.openNote(slug).then(() => {
+      const scroller = this.scroller()?.nativeElement;
+      if (scroller) scroller.scrollTop = 0;
+    });
   };
+
+  /** Scrolls to a heading of the page and marks it as the current one. */
+  protected goToHeading(id: string): void {
+    const heading = this.headingElements().find((h) => h.dataset['headingId'] === id);
+    heading?.scrollIntoView?.({ block: 'start' });
+    this.reached.set(id);
+  }
+
+  /** Marks as current the last heading that has reached the top of the scrolling area. */
+  protected updateActive(): void {
+    const scroller = this.scroller()?.nativeElement;
+    if (!scroller) return;
+    const top = scroller.getBoundingClientRect().top + 24;
+    let current: string | null = null;
+    for (const heading of this.headingElements()) {
+      if (heading.getBoundingClientRect().top > top) break;
+      current = heading.dataset['headingId'] ?? null;
+    }
+    // At the very bottom the last heading may never reach the top: it counts as reached.
+    const atBottom =
+      scroller.scrollHeight > scroller.clientHeight &&
+      scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2;
+    const last = this.headingElements().at(-1)?.dataset['headingId'] ?? null;
+    this.reached.set(atBottom ? last : current);
+  }
+
+  private headingElements(): HTMLElement[] {
+    const scroller = this.scroller()?.nativeElement;
+    return scroller ? Array.from(scroller.querySelectorAll<HTMLElement>('[data-heading-id]')) : [];
+  }
 
   protected startEdit(): void {
     const note = this.store.current();
@@ -394,8 +523,8 @@ export class WikiPage implements OnInit {
     this.confirmingDelete.set(false);
   }
 
-  protected date(iso: string): string {
-    return new Date(iso).toLocaleDateString('es');
+  protected longDate(iso: string): string {
+    return new Date(iso).toLocaleDateString('es', { dateStyle: 'long' });
   }
 
   /** Route guard: true when leaving loses nothing, or the user agrees to discard. */
