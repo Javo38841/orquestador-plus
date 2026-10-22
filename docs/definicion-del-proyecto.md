@@ -102,6 +102,7 @@ Resumen: 10 Must · 3 Should · 4 Could · 1 Won’t.
 | RNF-14 | Idioma de la interfaz | Toda la interfaz, mensajes y documentación de usuario están en español |
 | RNF-15 | Idioma del código | Código, identificadores, comentarios, commits y documentación técnica en inglés |
 | RNF-16 | Preparación para i18n | Los textos de la interfaz viven en archivos de traducción y no dentro del código, para poder agregar otro idioma sin reescribir nada |
+| RNF-17 | Consistencia visual | La interfaz sigue el diseño de `docs/diseno/pantallas.pdf`: una sola paleta (variables de tema) y componentes comunes (chips, badges, fechas con color, pestañas, tarjetas) que todas las pantallas reutilizan, con buen contraste |
 
 ---
 
