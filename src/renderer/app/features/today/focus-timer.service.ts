@@ -1,4 +1,5 @@
-import { computed, effect, inject, Injectable, signal } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
+import { computed, DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
 import { TasksStore } from '../tasks/tasks.store';
 
 export const FOCUS_DURATION_MS = 25 * 60 * 1000;
@@ -17,11 +18,13 @@ export function formatClock(ms: number): string {
 /**
  * Focus timer (RF-17). App-scoped so a session survives switching screens. The remaining
  * time comes from an end instant, not from counting ticks, so throttled timers do not
- * make it drift (RNF-10).
+ * make it drift (RNF-10). While the window is hidden or minimized the periodic tick is
+ * stopped; the clock is recomputed when it shows again.
  */
 @Injectable({ providedIn: 'root' })
 export class FocusTimerService {
   private readonly tasksStore = inject(TasksStore);
+  private readonly document = inject(DOCUMENT);
   private endAt = 0;
   private handle: ReturnType<typeof setInterval> | null = null;
 
@@ -33,6 +36,13 @@ export class FocusTimerService {
   readonly clock = computed(() => formatClock(this.remainingMs()));
 
   constructor() {
+    const onVisibility = () => this.onVisibilityChange();
+    this.document.addEventListener('visibilitychange', onVisibility);
+    inject(DestroyRef).onDestroy(() => {
+      this.document.removeEventListener('visibilitychange', onVisibility);
+      this.stopTicking();
+    });
+
     // The session ends when its task is completed or deleted.
     effect(() => {
       const id = this.taskId();
@@ -95,7 +105,22 @@ export class FocusTimerService {
     this.stopTicking();
     this.endAt = Date.now() + this.remainingMs();
     this.state.set('running');
+    this.startTicking();
+  }
+
+  private startTicking(): void {
+    if (this.handle !== null || this.document.visibilityState === 'hidden') return;
     this.handle = setInterval(() => this.refresh(), TICK_MS);
+  }
+
+  private onVisibilityChange(): void {
+    if (this.state() !== 'running') return;
+    if (this.document.visibilityState === 'hidden') {
+      this.stopTicking();
+    } else {
+      this.refresh();
+      if (this.state() === 'running') this.startTicking();
+    }
   }
 
   private stopTicking(): void {

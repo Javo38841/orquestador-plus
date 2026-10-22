@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import es from '../../../locales/es.json';
 import { openDatabase } from '../db/database';
 import { setRemindersEnabled } from '../settings/settings';
@@ -185,6 +185,54 @@ describe('reminder scheduler', () => {
     make('Lejana', '2030-01-01T09:00');
     scheduler().start();
     expect(active()[0]!.ms).toBeLessThanOrEqual(2 ** 31 - 1);
+  });
+
+  it('CP-N10-03: with no pending reminders there is no polling interval and no timer', () => {
+    const interval = vi.spyOn(globalThis, 'setInterval');
+    const timeout = vi.spyOn(globalThis, 'setTimeout');
+    try {
+      const s = createReminderScheduler({ db, notify: (n) => shown.push(n), now: () => clock });
+      s.start();
+      s.refresh();
+      expect(interval).not.toHaveBeenCalled();
+      expect(timeout).not.toHaveBeenCalled();
+      s.stop();
+
+      make('Pronto', at(9));
+      const armed = createReminderScheduler({ db, notify: (n) => shown.push(n), now: () => clock });
+      armed.start();
+      armed.refresh();
+      expect(interval).not.toHaveBeenCalled();
+      expect(timeout).toHaveBeenCalledTimes(2);
+      armed.stop();
+    } finally {
+      interval.mockRestore();
+      timeout.mockRestore();
+    }
+    expect(active()).toHaveLength(0);
+  });
+
+  it('CP-N10-04: a reminder beyond the setTimeout limit is re-armed in chunks and never fires early', () => {
+    const limit = 2 ** 31 - 1;
+    make('Dentro de 40 días', '2026-04-19T08:00');
+    const target = new Date(2026, 3, 19, 8, 0, 0).getTime();
+    expect(target - clock.getTime()).toBeGreaterThan(limit);
+    scheduler().start();
+
+    let chunks = 0;
+    while (active().length > 0) {
+      const timer = active()[0]!;
+      expect(timer.ms).toBeGreaterThan(0);
+      expect(timer.ms).toBeLessThanOrEqual(limit);
+      clock = new Date(clock.getTime() + timer.ms);
+      if (clock.getTime() < target) expect(shown).toHaveLength(0);
+      timer.run();
+      chunks++;
+      expect(chunks).toBeLessThan(10);
+    }
+    expect(chunks).toBeGreaterThan(1);
+    expect(shown).toHaveLength(1);
+    expect(clock.getTime()).toBe(target);
   });
 
   it('stop cancels the timer', () => {

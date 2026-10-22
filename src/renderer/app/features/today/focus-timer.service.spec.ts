@@ -129,4 +129,81 @@ describe('FocusTimerService', () => {
     TestBed.tick();
     expect(timer.state()).toBe('idle');
   });
+
+  describe('resources (RNF-10)', () => {
+    let visibility: DocumentVisibilityState;
+    // Intervals created and not yet cleared (the framework adds its own timers, so
+    // the fake clock's total count is not a reliable measure).
+    let live: Set<unknown>;
+
+    function setVisibility(value: DocumentVisibilityState) {
+      visibility = value;
+      document.dispatchEvent(new Event('visibilitychange'));
+    }
+
+    beforeEach(() => {
+      visibility = 'visible';
+      live = new Set();
+      const realSet = globalThis.setInterval;
+      const realClear = globalThis.clearInterval;
+      vi.spyOn(globalThis, 'setInterval').mockImplementation(((
+        ...args: Parameters<typeof setInterval>
+      ) => {
+        const handle = realSet(...args);
+        live.add(handle);
+        return handle;
+      }) as typeof setInterval);
+      vi.spyOn(globalThis, 'clearInterval').mockImplementation(((handle: never) => {
+        live.delete(handle);
+        realClear(handle);
+      }) as typeof clearInterval);
+      vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+    });
+    afterEach(() => vi.restoreAllMocks());
+
+    it('CP-N10-05: hiding the window stops the periodic updates and showing it catches up', async () => {
+      const { timer } = await setup([task(1)]);
+      timer.select(1);
+      timer.start();
+      expect(live.size).toBe(1);
+
+      setVisibility('hidden');
+      expect(live.size).toBe(0);
+      const before = timer.remainingMs();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(timer.remainingMs()).toBe(before);
+
+      setVisibility('visible');
+      expect(timer.remainingMs()).toBe(FOCUS_DURATION_MS - 60_000);
+      expect(timer.state()).toBe('running');
+      expect(live.size).toBe(1);
+    });
+
+    it('CP-N10-05: a session that ends while hidden is finished when the window shows again', async () => {
+      const { timer } = await setup([task(1)]);
+      timer.select(1);
+      timer.start();
+      setVisibility('hidden');
+      await vi.advanceTimersByTimeAsync(FOCUS_DURATION_MS + 1000);
+      setVisibility('visible');
+      expect(timer.state()).toBe('finished');
+      expect(live.size).toBe(0);
+    });
+
+    it('CP-N10-06: 100 create and destroy cycles leave no listeners or timers behind', async () => {
+      const add = vi.spyOn(document, 'addEventListener');
+      const remove = vi.spyOn(document, 'removeEventListener');
+      for (let i = 0; i < 100; i++) {
+        const { timer } = await setup([task(1)]);
+        timer.select(1);
+        timer.start();
+        TestBed.resetTestingModule();
+      }
+      const added = add.mock.calls.filter(([type]) => type === 'visibilitychange').length;
+      const removed = remove.mock.calls.filter(([type]) => type === 'visibilitychange').length;
+      expect(added).toBe(100);
+      expect(removed).toBe(100);
+      expect(live.size).toBe(0);
+    });
+  });
 });
