@@ -2,7 +2,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { SNIPPET_CONTENT_MAX_LENGTH, SNIPPET_TITLE_MAX_LENGTH } from '../../../../shared/snippets';
-import { parseMarkdown, type CalloutKind } from '../../../../shared/wiki';
+import { headingIds, parseMarkdown, type CalloutKind } from '../../../../shared/wiki';
 import { SnippetsStore } from '../snippets/snippets.store';
 
 /** Icon and theme-variable classes per callout; written out so Tailwind sees every class. */
@@ -33,6 +33,8 @@ const CALLOUT_STYLE: Record<CalloutKind, { icon: string; box: string; label: str
           @case ('heading') {
             <p
               class="font-semibold"
+              [attr.id]="headingIds().get(block) ?? null"
+              [attr.data-heading-id]="headingIds().get(block) ?? null"
               [class]="block.level === 1 ? 'text-2xl' : block.level === 2 ? 'text-xl' : 'text-lg'"
             >
               <ng-container
@@ -209,6 +211,8 @@ export class NoteBody {
   /** Per code block: `saved`, or the translation key of the error. */
   protected readonly feedback = signal<Record<string, string>>({});
   protected readonly blocks = computed(() => parseMarkdown(this.content()));
+  /** Anchor ids of the `##` / `###` headings: the same ones "En esta página" points to. */
+  protected readonly headingIds = computed(() => headingIds(this.blocks()));
 
   protected async saveSnippet(
     id: string,

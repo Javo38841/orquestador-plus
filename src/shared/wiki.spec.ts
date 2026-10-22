@@ -2,14 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   buildWikiTree,
   extractLinks,
+  extractToc,
   isValidSection,
   isValidSlug,
   noteKey,
+  pageNavigation,
   parseMarkdown,
   slugFromTitle,
   validateNoteInput,
   type NoteSummary,
   type SectionSummary,
+  type WikiTree,
 } from './wiki';
 
 describe('wiki shared helpers', () => {
@@ -233,5 +236,65 @@ describe('wiki tree', () => {
       ok: false,
       error: 'invalid',
     });
+  });
+});
+
+describe('extractToc', () => {
+  it('CP-08-33: lists ## and ### headings in order with level and unique id', () => {
+    const toc = extractToc('# Título\n\n## Instalar\ntexto\n### Requisitos\n## Usar');
+    expect(toc).toEqual([
+      { id: 'instalar', level: 2, text: 'Instalar' },
+      { id: 'requisitos', level: 3, text: 'Requisitos' },
+      { id: 'usar', level: 2, text: 'Usar' },
+    ]);
+  });
+
+  it('CP-08-34: skips #, #### or deeper and headings in code; repeated ones get distinct ids', () => {
+    const content = [
+      '# Uno',
+      '#### Profundo',
+      '```',
+      '## En código',
+      '```',
+      '## Repetido',
+      '## Repetido',
+      '### Repetido',
+    ].join('\n');
+    const toc = extractToc(content);
+    expect(toc.map((t) => t.text)).toEqual(['Repetido', 'Repetido', 'Repetido']);
+    expect(new Set(toc.map((t) => t.id)).size).toBe(3);
+  });
+
+  it('gives an id to headings made only of symbols', () => {
+    expect(extractToc('## ???')).toEqual([{ id: 'seccion', level: 2, text: '???' }]);
+  });
+});
+
+describe('pageNavigation', () => {
+  const page = (slug: string): NoteSummary => ({
+    slug,
+    title: slug,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  });
+  const tree: WikiTree = {
+    pages: [page('R')],
+    sections: [
+      { name: 's1', title: 's1', pages: [page('A'), page('B')] },
+      { name: 's2', title: 's2', pages: [page('C')] },
+    ],
+  };
+
+  it('CP-08-35: neighbours follow the sidebar order and cross sections', () => {
+    expect(pageNavigation(tree, 'B')).toEqual({ previous: page('A'), next: page('C') });
+    expect(pageNavigation(tree, 'A').previous).toEqual(page('R'));
+  });
+
+  it('CP-08-36: no previous on the first page, no next on the last, none on a single page', () => {
+    expect(pageNavigation(tree, 'R').previous).toBeNull();
+    expect(pageNavigation(tree, 'C').next).toBeNull();
+    const single: WikiTree = { pages: [page('X')], sections: [] };
+    expect(pageNavigation(single, 'X')).toEqual({ previous: null, next: null });
+    expect(pageNavigation(tree, 'nope')).toEqual({ previous: null, next: null });
   });
 });

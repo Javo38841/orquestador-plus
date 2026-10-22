@@ -131,3 +131,69 @@ test.describe('callouts, titled code and tables', () => {
     await expect(card).toContainText('FROM usuarios;');
   });
 });
+
+test.describe('index, backlinks and page footer', () => {
+  const LONG_BODY = [
+    '## Primero',
+    ...Array.from({ length: 40 }, () => 'Relleno de la página.\n'),
+    '### Segundo',
+    ...Array.from({ length: 40 }, () => 'Más relleno.\n'),
+    '## Tercero',
+    'Fin. Ver [[Desplegar]].',
+  ].join('\n');
+
+  test.beforeEach(async () => {
+    await launched.close();
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orq-e2e-'));
+    page(dataDir, 'Empezar/_section.md', 'Empezar', 'order: 1\n', '');
+    page(dataDir, 'Empezar/Instalar.md', 'Instalar', 'order: 1\n', LONG_BODY);
+    page(dataDir, 'Empezar/Configurar.md', 'Configurar', 'order: 2\n', 'Texto.');
+    page(dataDir, 'Guías/_section.md', 'Guías', 'order: 2\n', '');
+    page(
+      dataDir,
+      'Guías/Desplegar.md',
+      'Desplegar',
+      'updated: 2026-10-20T15:00:00.000Z\n',
+      'Pasos para desplegar.',
+    );
+    launched = await launchApp(dataDir);
+    await launched.page.getByRole('link', { name: 'Tareas' }).click();
+    await launched.page.getByRole('link', { name: 'Wiki' }).click();
+  });
+
+  test('CP-08-44: the right column, the footer and the index jump work', async () => {
+    const { page } = launched;
+    await page.getByTestId('note-item').filter({ hasText: 'Instalar' }).click();
+    await expect(page.getByTestId('toc')).toContainText('En esta página');
+    await expect(page.getByTestId('toc-item')).toHaveText(['Primero', 'Segundo', 'Tercero']);
+    await expect(page.getByTestId('backlinks')).toContainText('Enlaces entrantes');
+    await expect(page.getByTestId('page-edit')).toHaveText('Editar página');
+    await expect(page.getByTestId('page-updated')).toContainText('Última actualización:');
+    await expect(page.getByTestId('page-next')).toContainText('Configurar');
+
+    await page.getByTestId('toc-item').filter({ hasText: 'Tercero' }).click();
+    await expect(page.locator('[data-heading-id="tercero"]')).toBeInViewport();
+    await expect(page.getByTestId('toc-item').filter({ hasText: 'Tercero' })).toHaveAttribute(
+      'aria-current',
+      'location',
+    );
+
+    await page.getByTestId('note-item').filter({ hasText: 'Desplegar' }).click();
+    await expect(page.getByTestId('page-updated')).toHaveText(
+      'Última actualización: 20 de octubre de 2026',
+    );
+    await expect(page.getByTestId('backlink')).toHaveText('Instalar');
+  });
+
+  test('CP-08-45: Siguiente crosses to the next section and Anterior comes back', async () => {
+    const { page } = launched;
+    await page.getByTestId('note-item').filter({ hasText: 'Configurar' }).click();
+    await page.getByTestId('page-next').click();
+    await expect(page.getByTestId('note-view-title')).toHaveText('Desplegar');
+    await expect(page.getByTestId('breadcrumb-section')).toHaveText('Guías');
+
+    await page.getByTestId('page-prev').click();
+    await expect(page.getByTestId('note-view-title')).toHaveText('Configurar');
+    await expect(page.getByTestId('breadcrumb-section')).toHaveText('Empezar');
+  });
+});
