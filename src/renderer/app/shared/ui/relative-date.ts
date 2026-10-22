@@ -50,6 +50,8 @@ export class RelativeDate {
    * year when it is not the current one).
    */
   readonly compact = input(false);
+  /** Spell out "Mañana" even in the long wording. */
+  readonly showTomorrow = input(false);
 
   protected readonly view = computed(() => {
     const date = this.date();
@@ -60,7 +62,11 @@ export class RelativeDate {
       compact ? compactDate(date, now) : shortDate.format(new Date(`${date}T00:00:00`));
     if (this.done()) return { text: format(), classes: 'text-muted' };
     const label = dueLabel(date, now);
-    if (!label && compact && date === localDate(new Date(now.getTime() + DAY_MS))) {
+    if (
+      !label &&
+      (compact || this.showTomorrow()) &&
+      date === localDate(new Date(now.getTime() + DAY_MS))
+    ) {
       return { text: this.transloco.translate('ui.date.tomorrow'), classes: 'text-muted' };
     }
     if (!label) return { text: format(), classes: 'text-muted' };

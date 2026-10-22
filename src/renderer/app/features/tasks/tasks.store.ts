@@ -116,6 +116,19 @@ export class TasksStore {
     return null;
   }
 
+  /** Creates a task straight into a board column ("Hecho" completes it). */
+  async create(input: TaskInput, status: TaskStatus): Promise<TaskError | null> {
+    const checked = validateTaskInput(input);
+    if (!checked.ok) return checked.error;
+    if (!this.api) return null;
+
+    const result = await this.api.createTask(input);
+    if (!result.ok) return result.error;
+    if (status !== 'todo') await this.api.setTaskStatus(result.task.id, status);
+    await this.load();
+    return null;
+  }
+
   async setDone(task: Task, done: boolean): Promise<void> {
     await this.move(task, done ? 'done' : 'todo');
   }

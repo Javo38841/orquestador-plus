@@ -9,6 +9,8 @@ export class InboxStore {
   private readonly list = signal<InboxItem[]>([]);
 
   readonly items = this.list.asReadonly();
+  /** Reports that came through the portal and were not classified yet (RF-15). */
+  readonly portalItems = computed(() => this.list().filter((i) => i.source === 'portal'));
   readonly count = computed(() => this.list().length);
 
   async load(): Promise<void> {

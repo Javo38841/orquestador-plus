@@ -90,4 +90,13 @@ describe('InboxStore', () => {
     expect(discardInboxItem).toHaveBeenCalledWith(1);
     expect(store.items().map((i) => i.id)).toEqual([2]);
   });
+
+  it('CP-15-11: portalItems keeps only portal reports and follows classification', async () => {
+    const { store } = setup([{ ...item(1, 'reporte'), source: 'portal' }, item(2, 'captura')]);
+    await store.load();
+    expect(store.portalItems().map((i) => i.id)).toEqual([1]);
+    await store.convert(1, { title: 'reporte', dueDate: null, projectId: null });
+    expect(store.portalItems()).toEqual([]);
+    expect(store.count()).toBe(1);
+  });
 });

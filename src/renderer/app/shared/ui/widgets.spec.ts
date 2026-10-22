@@ -27,6 +27,11 @@ async function setup<T>(component: Type<T>, inputs: Record<string, unknown> = {}
 }
 
 describe('RelativeDate', () => {
+  it('CP-04-18: showTomorrow spells out "Mañana" in the long wording', async () => {
+    const { el } = await setup(RelativeDate, { date: '2026-10-23', now: NOW, showTomorrow: true });
+    expect(el.querySelector('[data-testid="relative-date"]')!.textContent).toBe('Mañana');
+  });
+
   const span = (el: HTMLElement) => el.querySelector<HTMLElement>('[data-testid="relative-date"]');
 
   it('CP-N17-09: an overdue date reads "Venció ayer" in amber', async () => {

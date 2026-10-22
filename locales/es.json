@@ -163,7 +163,23 @@
     },
     "emptyColumn": "Sin tareas",
     "move": "Mover a…",
+    "add": "Agregar tarea en {{column}}",
+    "addTitle": "Título de la nueva tarea en {{column}}",
+    "addPlaceholder": "Título de la tarea",
+    "addFailed": "No se pudo crear la tarea",
+    "moreTags": "más…",
+    "moreTagsLabel": "Mostrar el resto de las etiquetas",
+    "tagsLabel": "Filtrar por etiqueta",
+    "panelFold": "Plegar el panel de proyectos",
+    "panelUnfold": "Desplegar el panel de proyectos",
+    "inbox": {
+      "unreviewed": "Sin revisar",
+      "empty": "Sin reportes",
+      "classifyTask": "Clasificar como tarea",
+      "classifyBug": "Bug"
+    },
     "columns": {
+      "inbox": "Entrantes",
       "todo": "Por hacer",
       "inProgress": "En curso",
       "done": "Hecho"
@@ -549,6 +565,9 @@
       "overdueYesterday": "Venció ayer",
       "overdueDaysAgo": "Venció hace {{days}} días",
       "tomorrow": "Mañana",
+      "completedToday": "Completada hoy",
+      "completedYesterday": "Completada ayer",
+      "completedDaysAgo": "Completada hace {{days}} días",
       "compact": {
         "overdueYesterday": "Ayer",
         "overdueDaysAgo": "Hace {{days}} días"
