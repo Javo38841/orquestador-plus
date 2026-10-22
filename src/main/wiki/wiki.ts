@@ -67,13 +67,18 @@ function writeFileAtomic(target: string, data: string): void {
   }
 }
 
+/** Notes are always written with `\n` line endings, whatever the editor or system sent. */
+function toLf(text: string): string {
+  return text.replace(/\r\n?/g, '\n');
+}
+
 export function serializeNote(
   title: string,
   createdAt: string,
   updatedAt: string,
   content: string,
 ): string {
-  return `---\ntitle: ${JSON.stringify(title)}\ncreated: ${createdAt}\nupdated: ${updatedAt}\n---\n\n${content}`;
+  return `---\ntitle: ${JSON.stringify(title)}\ncreated: ${createdAt}\nupdated: ${updatedAt}\n---\n\n${toLf(content)}`;
 }
 
 export interface ParsedNote {
@@ -84,7 +89,8 @@ export interface ParsedNote {
 }
 
 /** Reads the frontmatter written by `serializeNote`; tolerates files without it. */
-export function parseNote(text: string): ParsedNote {
+export function parseNote(raw: string): ParsedNote {
+  const text = raw.replace(/^\uFEFF/, ''); // a BOM added by a Windows editor
   const match = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
   if (!match) return { title: null, createdAt: null, updatedAt: null, content: text };
   const fields = new Map<string, string>();
@@ -199,7 +205,7 @@ export function createNote(wiki: Wiki, input: unknown, now: Date = new Date()): 
           'INSERT INTO notes (slug, title, title_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
         )
         .run(slug, checked.title, key, stamp, stamp);
-      indexLinks(wiki.db, Number(info.lastInsertRowid), checked.content);
+      indexLinks(wiki.db, Number(info.lastInsertRowid), toLf(checked.content));
       const target = filePath(wiki, slug);
       // A file left over without index entry also counts as taken.
       if (fs.existsSync(target)) throw new WikiError('duplicate');
@@ -331,8 +337,9 @@ export function rebuildIndex(wiki: Wiki): number {
       const parsed = parseNote(text);
       const title = parsed.title ?? slug;
       const key = noteKey(title);
-      if (slugs.has(slug.toLowerCase()) || keys.has(key)) continue;
-      slugs.add(slug.toLowerCase());
+      const slugKey = slug.normalize('NFC').toLowerCase();
+      if (slugs.has(slugKey) || keys.has(key)) continue;
+      slugs.add(slugKey);
       keys.add(key);
       const mtime = fs.statSync(file).mtime.toISOString();
       const info = insert.run(

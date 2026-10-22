@@ -37,7 +37,7 @@ export type NoteResult = { ok: true; note: Note } | { ok: false; error: NoteErro
 
 /** Links resolve by title, ignoring case and surrounding whitespace. */
 export function noteKey(title: string): string {
-  return title.trim().replace(/\s+/g, ' ').toLowerCase();
+  return title.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 /** Trims and checks title and content. Content may be empty. */
@@ -71,11 +71,13 @@ export function isValidSlug(slug: unknown): slug is string {
   );
 }
 
-const RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+/** Windows reserves these names with or without an extension (`CON.md`, `nul.backup.md`). */
+const RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
 
 /** File name (without extension) for a title: never contains separators or `..`. */
 export function slugFromTitle(title: string): string {
   let slug = title
+    .normalize('NFC')
     // eslint-disable-next-line no-control-regex
     .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-')
     .replace(/\.{2,}/g, '-')
@@ -83,9 +85,13 @@ export function slugFromTitle(title: string): string {
     .replace(/-{2,}/g, '-')
     .trim()
     .replace(/^[.\-\s]+|[.\-\s]+$/g, '');
-  slug = slug.slice(0, 100).trim();
+  // Cut by code points so an emoji is never split; trailing dots/spaces are invalid on Windows.
+  slug = Array.from(slug)
+    .slice(0, 100)
+    .join('')
+    .replace(/[.\-\s]+$/, '');
   if (slug === '') return 'nota';
-  if (RESERVED_NAMES.test(slug)) return `${slug}-nota`;
+  if (RESERVED_NAMES.test(slug)) return slug.replace(/^[^.]*/, '$&-nota');
   return slug;
 }
 

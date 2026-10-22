@@ -74,5 +74,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   reminders?.stop();
   void portal?.stop();
+  // Fold the WAL into datos.db so copying that single file to another system is safe (RNF-12).
+  db?.pragma('wal_checkpoint(TRUNCATE)');
   db?.close();
 });
