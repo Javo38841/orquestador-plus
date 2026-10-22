@@ -99,3 +99,17 @@ test('ADR-003: the renderer has no access to Node', async () => {
     ],
   });
 });
+
+test('CP-N09-01: first launch on a missing data folder needs no setup', async () => {
+  const missing = path.join(launched.dataDir, 'nested', 'primera-vez');
+  const first = await launchApp(missing);
+  try {
+    await expect(first.page.getByRole('heading', { level: 1, name: 'Hoy' })).toBeVisible();
+    await expect(first.page.getByRole('dialog')).toHaveCount(0);
+    expect(fs.existsSync(path.join(missing, 'datos.db'))).toBe(true);
+    expect(fs.statSync(path.join(missing, 'wiki')).isDirectory()).toBe(true);
+    expect(fs.statSync(path.join(missing, 'adjuntos')).isDirectory()).toBe(true);
+  } finally {
+    await first.close();
+  }
+});

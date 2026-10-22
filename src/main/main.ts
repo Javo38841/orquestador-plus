@@ -2,7 +2,7 @@ import path from 'node:path';
 import { app, BrowserWindow, Menu, Notification } from 'electron';
 import type Database from 'better-sqlite3';
 import { appNameFor, CHANNEL, resolveDataDir } from './channel';
-import { openDatabase } from './db/database';
+import { initStorage } from './storage';
 import { registerIpcHandlers } from './ipc/register';
 import { createReminderScheduler, type ReminderScheduler } from './reminders/scheduler';
 import { createPortalServer, type PortalServer } from './portal/server';
@@ -38,8 +38,9 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(() => {
     Menu.setApplicationMenu(null);
-    db = openDatabase(dataDir);
-    const wikiDir = path.join(dataDir, 'wiki');
+    const storage = initStorage(dataDir);
+    db = storage.db;
+    const { wikiDir } = storage;
     // Files are the source of truth (ADR-001): the index is rebuilt on every start.
     rebuildIndex({ db, dir: wikiDir });
     reminders = createReminderScheduler({

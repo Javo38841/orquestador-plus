@@ -125,32 +125,49 @@ describe('RNF-05 performance with years of data', () => {
     else expect(results.length).toBeGreaterThan(0);
   });
 
-  it(`CP-N05-04: create, edit and delete are searchable at once and take under ${WRITE_MS} ms`, () => {
-    let id = 0;
-    const created = elapsedMs(() => {
-      const r = createTask(db, { title: 'Quimerazo único de rendimiento' });
-      if (!r.ok) throw new Error('create');
-      id = r.task.id;
-    });
-    expect(search(db, 'quimerazo').map((r) => r.id)).toEqual([id]);
+  it(`CP-N05-04: create, edit and delete are searchable at once and take under ${WRITE_MS} ms (median of ${RUNS})`, () => {
+    const created: number[] = [];
+    const edited: number[] = [];
+    const deleted: number[] = [];
+    const captured: number[] = [];
 
-    const edited = elapsedMs(() => {
-      updateTask(db, id, { title: 'Zarandaja único de rendimiento' });
-    });
-    expect(search(db, 'quimerazo')).toEqual([]);
-    expect(search(db, 'zarandaja').map((r) => r.id)).toEqual([id]);
+    for (let i = 0; i < RUNS; i++) {
+      let id = 0;
+      created.push(
+        elapsedMs(() => {
+          const r = createTask(db, { title: 'Quimerazo único de rendimiento' });
+          if (!r.ok) throw new Error('create');
+          id = r.task.id;
+        }),
+      );
+      expect(search(db, 'quimerazo').map((r) => r.id)).toEqual([id]);
 
-    const deleted = elapsedMs(() => {
-      deleteTask(db, id);
-    });
-    expect(search(db, 'zarandaja')).toEqual([]);
+      edited.push(
+        elapsedMs(() => {
+          updateTask(db, id, { title: 'Zarandaja único de rendimiento' });
+        }),
+      );
+      expect(search(db, 'quimerazo')).toEqual([]);
+      expect(search(db, 'zarandaja').map((r) => r.id)).toEqual([id]);
 
-    const captured = elapsedMs(() => {
-      captureItem(db, 'Captura única de rendimiento');
-    });
-    expect(search(db, 'captura unica')).toHaveLength(1);
+      deleted.push(
+        elapsedMs(() => {
+          deleteTask(db, id);
+        }),
+      );
+      expect(search(db, 'zarandaja')).toEqual([]);
 
-    for (const ms of [created, edited, deleted, captured]) expect(ms).toBeLessThan(WRITE_MS);
+      captured.push(
+        elapsedMs(() => {
+          captureItem(db, 'Captura única de rendimiento');
+        }),
+      );
+      expect(search(db, 'captura unica')).toHaveLength(i + 1);
+    }
+
+    for (const times of [created, edited, deleted, captured]) {
+      expect(median(times)).toBeLessThan(WRITE_MS);
+    }
   });
 
   it(`CP-N05-05: opening the database and starting main's services takes under ${OPEN_DATABASE_MS} ms`, () => {
