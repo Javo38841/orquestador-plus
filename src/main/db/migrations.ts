@@ -311,6 +311,22 @@ export const migrations: Migration[] = [
       ) STRICT;
     `,
   },
+  {
+    version: 16,
+    name: 'wiki_sections',
+    // Sections are the folders of wiki/ (one level). Like the rest of the notes table this is an
+    // index rebuilt from the files: `section` is the folder, `sort_order` the frontmatter `order`.
+    up: `
+      ALTER TABLE notes ADD COLUMN section TEXT;
+      ALTER TABLE notes ADD COLUMN sort_order INTEGER;
+      ALTER TABLE notes ADD COLUMN description TEXT;
+      CREATE TABLE note_sections (
+        name       TEXT PRIMARY KEY,
+        title      TEXT NOT NULL,
+        sort_order INTEGER
+      ) STRICT;
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {

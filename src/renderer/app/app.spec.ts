@@ -36,6 +36,7 @@ function fakeApi(overrides: Partial<AppInfo> = {}, bugs: Bug[] = []): Orquestado
     createProject: async () => ({ ok: false, error: 'empty' }),
     deleteProject: async () => false,
     listNotes: async () => [],
+    listSections: async () => [],
     getNote: async () => ({ ok: false, error: 'not_found' }),
     createNote: async () => ({ ok: false, error: 'empty' }),
     updateNote: async () => ({ ok: false, error: 'not_found' }),

@@ -6,7 +6,7 @@ import type { CaptureResult, InboxItem } from './inbox';
 import type { PortalLinkInput, PortalLinkResult, PortalLink, PortalStatus } from './portal';
 import type { ExportResult } from './export';
 import type { SearchResult } from './search';
-import type { NoteInput, NoteResult, NoteSummary } from './wiki';
+import type { NoteInput, NoteResult, NoteSummary, SectionSummary } from './wiki';
 import type { Project, ProjectResult, Task, TaskInput, TaskResult, TaskStatus } from './tasks';
 
 /**
@@ -32,6 +32,7 @@ export const IpcChannel = {
   createProject: 'projects:create',
   deleteProject: 'projects:delete',
   listNotes: 'notes:list',
+  listSections: 'notes:list-sections',
   getNote: 'notes:get',
   createNote: 'notes:create',
   updateNote: 'notes:update',
@@ -97,8 +98,10 @@ export interface OrquestadorApi {
   listProjects(): Promise<Project[]>;
   createProject(name: string): Promise<ProjectResult>;
   deleteProject(id: number): Promise<boolean>;
-  /** Wiki notes sorted by title (RF-08). */
-  listNotes(): Promise<NoteSummary[]>;
+  /** Wiki notes sorted by title (RF-08), each with its section; `section` limits to one folder. */
+  listNotes(section?: string): Promise<NoteSummary[]>;
+  /** Folders of `wiki/` that hold notes, with the title and order from `_section.md`. */
+  listSections(): Promise<SectionSummary[]>;
   /** A note with its links and backlinks; `slug` is the file name without `.md`. */
   getNote(slug: string): Promise<NoteResult>;
   createNote(input: NoteInput): Promise<NoteResult>;

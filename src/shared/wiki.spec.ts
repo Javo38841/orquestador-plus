@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildWikiTree,
   extractLinks,
+  isValidSection,
   isValidSlug,
   noteKey,
   parseMarkdown,
   slugFromTitle,
   validateNoteInput,
+  type NoteSummary,
+  type SectionSummary,
 } from './wiki';
 
 describe('wiki shared helpers', () => {
@@ -65,5 +69,78 @@ describe('wiki shared helpers', () => {
     ]);
     expect(blocks[2]).toMatchObject({ type: 'list', ordered: false });
     expect(blocks[3]).toEqual({ type: 'code', text: '<b>x</b>' });
+  });
+});
+
+describe('wiki tree', () => {
+  const note = (slug: string, section?: string, order?: number): NoteSummary => ({
+    slug,
+    title: slug,
+    createdAt: '2026-03-01T10:00:00.000Z',
+    updatedAt: '2026-03-01T10:00:00.000Z',
+    ...(section !== undefined && { section }),
+    ...(order !== undefined && { order }),
+  });
+
+  it('CP-08-21: sections and pages follow their order; the rest go last by name', () => {
+    const sections: SectionSummary[] = [
+      { name: 'Aprendizaje', title: 'Aprendizaje', order: 4 },
+      { name: 'Empezar', title: 'Empezar', order: 1 },
+      { name: 'Guías', title: 'Guías', order: 3 },
+      { name: 'Decisiones', title: 'Decisiones', order: 2 },
+    ];
+    const notes = [
+      note('zeta', 'Empezar'),
+      note('beta', 'Empezar', 2),
+      note('alfa', 'Empezar', 1),
+      note('adr', 'Decisiones'),
+      note('x', 'Zona'),
+      note('b', 'Archivo'),
+      note('suelta-b'),
+      note('suelta-a'),
+      note('g', 'Guías'),
+      note('l', 'Aprendizaje'),
+    ];
+    const tree = buildWikiTree(notes, sections);
+
+    expect(tree.sections.map((s) => s.name)).toEqual([
+      'Empezar',
+      'Decisiones',
+      'Guías',
+      'Aprendizaje',
+      'Archivo',
+      'Zona',
+    ]);
+    expect(tree.sections[0].pages.map((p) => p.slug)).toEqual(['alfa', 'beta', 'zeta']);
+    expect(tree.pages.map((p) => p.slug)).toEqual(['suelta-a', 'suelta-b']);
+  });
+
+  it('CP-08-21: an empty wiki gives an empty tree', () => {
+    expect(buildWikiTree([], [])).toEqual({ pages: [], sections: [] });
+  });
+
+  it('CP-08-25: isValidSection accepts one folder name only', () => {
+    for (const ok of ['Guías', 'Empezar aquí', 'a.b']) expect(isValidSection(ok)).toBe(true);
+    for (const bad of [
+      '..',
+      'a/b',
+      'a\\b',
+      '/abs',
+      'C:x',
+      '',
+      ' x',
+      '.git',
+      '_section',
+      'nul',
+      'x.',
+      1,
+      null,
+    ]) {
+      expect(isValidSection(bad)).toBe(false);
+    }
+    expect(validateNoteInput({ title: 'T', content: '', section: '..' })).toEqual({
+      ok: false,
+      error: 'invalid',
+    });
   });
 });
