@@ -350,6 +350,20 @@
       "resolved": "Resueltos",
       "all": "Todos"
     },
+    "sections": {
+      "symptom": "SÍNTOMA",
+      "impact": "IMPACTO",
+      "rootCause": "CAUSA RAÍZ",
+      "solution": "SOLUCIÓN"
+    },
+    "unfilled": "Sin completar",
+    "age": {
+      "open": "abierto",
+      "other": "registrado",
+      "today": "hoy",
+      "oneDay": "hace 1 día",
+      "days": "hace {{days}} días"
+    },
     "status": {
       "new": "Nuevo",
       "analysis": "En análisis",
