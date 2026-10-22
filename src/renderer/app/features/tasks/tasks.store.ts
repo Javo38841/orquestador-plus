@@ -1,5 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import {
+  validateProjectName,
   validateTaskInput,
   type Project,
   type Task,
@@ -67,6 +68,21 @@ export class TasksStore {
     this.tagList.set(tags);
     // A filter on a tag nobody uses anymore would hide everything.
     if (this.tagFilter() !== null && !tags.includes(this.tagFilter()!)) this.tagFilter.set(null);
+  }
+
+  /** Creates a project by name. Returns the new project, or the error. */
+  async createProject(name: string): Promise<{ project: Project } | { error: TaskError }> {
+    const checked = validateProjectName(name);
+    if (!checked.ok) return { error: checked.error };
+    if (!this.api) return { error: 'invalid_project' };
+    const result = await this.api.createProject(checked.name);
+    if (!result.ok) return { error: result.error };
+    this.projectList.update((list) =>
+      [...list, result.project].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+      ),
+    );
+    return { project: result.project };
   }
 
   /** Creates (no `id`) or edits a task. Returns the validation error, if any. */

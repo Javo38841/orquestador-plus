@@ -71,3 +71,33 @@ test('CP-04-02: a card moved to "En curso" is still there after reopening the ap
   await expect(column(reopened.page, 'in_progress')).toContainText('Persistir columna');
   await expect(column(reopened.page, 'todo')).not.toContainText('Persistir columna');
 });
+
+test('CP-04-05: Tablero shows a "Proyectos" section with every existing project', async () => {
+  const { page } = launched;
+  await page.getByRole('link', { name: 'Tareas' }).click();
+  await addTask(page, 'Una', 'alfa');
+  await addTask(page, 'Otra', 'beta');
+  await page.getByRole('link', { name: 'Tablero' }).click();
+  const panel = page.getByTestId('board-projects-panel');
+  await expect(panel.getByRole('heading', { name: 'Proyectos' })).toBeVisible();
+  await expect(panel.getByTestId('board-project-item')).toHaveText(['alfa', 'beta']);
+});
+
+test('CP-04-06: a project created from the board is in the list and combo box after reopening', async () => {
+  const { page, app, dataDir } = launched;
+  await page.getByRole('link', { name: 'Tablero' }).click();
+  await page.getByTestId('project-name').fill('sin-tareas');
+  await page.getByTestId('project-name').press('Enter');
+  await expect(page.getByTestId('board-project-item')).toHaveText(['sin-tareas']);
+  await expect(page.getByTestId('board-select').locator('option')).toHaveText([
+    'General',
+    'sin-tareas',
+  ]);
+
+  await app.close();
+  const reopened = await launchApp(dataDir);
+  launched = reopened;
+  await reopened.page.getByRole('link', { name: 'Tablero' }).click();
+  await expect(reopened.page.getByTestId('board-project-item')).toHaveText(['sin-tareas']);
+  await expect(reopened.page.getByTestId('board-select')).toHaveValue(/\d+/);
+});

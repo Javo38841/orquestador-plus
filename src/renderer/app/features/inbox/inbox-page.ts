@@ -13,6 +13,7 @@ const ERROR_KEYS: Record<TaskError, string> = {
   too_long: 'tasks.errors.tooLong',
   invalid_date: 'tasks.errors.invalidDate',
   invalid_project: 'tasks.errors.invalidProject',
+  duplicate_project: 'board.errors.duplicate',
   not_found: 'tasks.errors.notFound',
   invalid_reminder: 'tasks.errors.invalidReminder',
   reminder_series: 'tasks.errors.reminderSeries',

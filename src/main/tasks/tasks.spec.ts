@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { openDatabase } from '../db/database';
 import { migrate, migrations } from '../db/migrations';
-import { localDate } from '../../shared/tasks';
+import { localDate, PROJECT_NAME_MAX_LENGTH } from '../../shared/tasks';
 import {
   createProject,
   createTask,
@@ -85,6 +85,20 @@ describe('tasks', () => {
     expect(moved).toMatchObject({ ok: true, task: { projectName: 'web' } });
     const loose = updateTask(db, task.id, { title: 't', projectId: null });
     expect(loose).toMatchObject({ ok: true, task: { projectId: null } });
+  });
+
+  it('CP-04-07: createProject rejects empty, blank and too long names', () => {
+    for (const name of ['', '   ', 'x'.repeat(PROJECT_NAME_MAX_LENGTH + 1)]) {
+      expect(createProject(db, name).ok).toBe(false);
+    }
+    expect(createProject(db, 'x'.repeat(PROJECT_NAME_MAX_LENGTH)).ok).toBe(true);
+    expect(listProjects(db)).toHaveLength(1);
+  });
+
+  it('CP-04-08: a name that already exists, in any case, is not duplicated', () => {
+    expect(createProject(db, 'Web').ok).toBe(true);
+    expect(createProject(db, ' web ')).toEqual({ ok: false, error: 'duplicate_project' });
+    expect(listProjects(db)).toHaveLength(1);
   });
 
   it('rejects editing a missing task or using a missing project', () => {

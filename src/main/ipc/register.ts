@@ -33,7 +33,12 @@ import { createLink, listLinks, revokeLink } from '../portal/links';
 import type { PortalServer } from '../portal/server';
 import { search } from '../search/search';
 import type { ReminderScheduler } from '../reminders/scheduler';
-import { getRemindersEnabled, setRemindersEnabled } from '../settings/settings';
+import {
+  getBoardProject,
+  getRemindersEnabled,
+  setBoardProject,
+  setRemindersEnabled,
+} from '../settings/settings';
 import { createNote, deleteNote, getNote, listNotes, updateNote, type Wiki } from '../wiki/wiki';
 
 export function registerIpcHandlers(
@@ -184,6 +189,10 @@ export function registerIpcHandlers(
     withDb((d) => revokeLink(d, id)),
   );
 
+  ipcMain.handle(IpcChannel.getBoardProject, () => withDb(getBoardProject));
+  ipcMain.handle(IpcChannel.setBoardProject, (_event, id: unknown) =>
+    withDb((d) => setBoardProject(d, id)),
+  );
   ipcMain.handle(IpcChannel.getRemindersEnabled, () => withDb(getRemindersEnabled));
   ipcMain.handle(IpcChannel.setRemindersEnabled, (_event, enabled: unknown) =>
     rearm(withDb((d) => setRemindersEnabled(d, enabled))),

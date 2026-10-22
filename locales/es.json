@@ -128,7 +128,19 @@
     "dueDaysAgo": "Hace {{days}} días"
   },
   "board": {
-    "active": "Activas",
+    "select": "Tablero",
+    "general": "General",
+    "projects": "Proyectos",
+    "noProjects": "Todavía no tienes proyectos.",
+    "newProject": "Nuevo proyecto",
+    "newProjectPlaceholder": "Nombre del proyecto",
+    "create": "Crear proyecto",
+    "errors": {
+      "empty": "Escribe un nombre para el proyecto.",
+      "tooLong": "El nombre no puede superar {{max}} caracteres.",
+      "duplicate": "Ya existe un proyecto con ese nombre.",
+      "generic": "No se pudo crear el proyecto."
+    },
     "emptyColumn": "Sin tareas",
     "move": "Mover a…",
     "columns": {
