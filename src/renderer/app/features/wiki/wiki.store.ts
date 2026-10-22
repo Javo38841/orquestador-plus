@@ -1,11 +1,13 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import {
+  buildWikiTree,
   noteKey,
   validateNoteInput,
   type Note,
   type NoteError,
   type NoteInput,
   type NoteSummary,
+  type SectionSummary,
 } from '../../../../shared/wiki';
 import { DESKTOP_API } from '../../core/desktop-api';
 
@@ -13,9 +15,19 @@ import { DESKTOP_API } from '../../core/desktop-api';
 export class WikiStore {
   private readonly api = inject(DESKTOP_API);
   private readonly list = signal<NoteSummary[]>([]);
+  private readonly folders = signal<SectionSummary[]>([]);
   private readonly open = signal<Note | null>(null);
 
   readonly notes = this.list.asReadonly();
+  readonly sections = this.folders.asReadonly();
+  /** Sidebar tree: loose pages and sections, each in its defined order. */
+  readonly tree = computed(() => buildWikiTree(this.list(), this.folders()));
+  /** Title of the section the open note belongs to, if any. */
+  readonly currentSectionTitle = computed(() => {
+    const name = this.open()?.section;
+    if (name === undefined) return null;
+    return this.folders().find((s) => s.name === name)?.title ?? name;
+  });
   /** The note shown in the reading view. */
   readonly current = this.open.asReadonly();
   /** File name of the note each normalized title points to; missing = pending link. */
@@ -25,7 +37,9 @@ export class WikiStore {
 
   async load(): Promise<void> {
     if (!this.api) return;
-    this.list.set(await this.api.listNotes());
+    const [notes, sections] = await Promise.all([this.api.listNotes(), this.api.listSections()]);
+    this.list.set(notes);
+    this.folders.set(sections);
   }
 
   async openNote(slug: string): Promise<NoteError | null> {

@@ -16,6 +16,7 @@ const note = (slug: string, content = ''): Note => ({
 
 function setup(result: NoteResult = { ok: true, note: note('A') }) {
   const api = {
+    listSections: vi.fn(async () => []),
     listNotes: vi.fn(async () => [note('A'), note('Guía de B')]),
     getNote: vi.fn(async () => result),
     createNote: vi.fn(async () => result),

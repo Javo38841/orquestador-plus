@@ -267,7 +267,12 @@
       "duplicate": "Ya existe una nota con ese título o nombre de archivo",
       "notFound": "La nota ya no existe",
       "io": "No se pudo guardar el archivo de la nota"
-    }
+    },
+    "name": "Wiki",
+    "search": "Buscar en la wiki · Ctrl K",
+    "exit": "Salir de la wiki · Esc",
+    "sidebar": "Secciones de la wiki",
+    "breadcrumbs": "Ruta de la página"
   },
   "bugs": {
     "new": "Nuevo bug",

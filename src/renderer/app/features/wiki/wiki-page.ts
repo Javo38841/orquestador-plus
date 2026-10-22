@@ -1,8 +1,11 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import type { NoteError } from '../../../../shared/wiki';
+import { SearchLauncher } from '../search/search-launcher';
 import { NoteBody } from './note-body';
+import { WikiMode } from './wiki-mode';
 import { WikiStore } from './wiki.store';
+import { WikiTreeComponent } from './wiki-tree';
 
 export const NOTE_ERROR_KEYS: Record<NoteError, string> = {
   empty: 'wiki.errors.empty',
@@ -18,29 +21,48 @@ interface Draft {
   content: string;
 }
 
-/** Wiki (RF-08): note list, reading view with backlinks, and a simple editor with preview. */
+/**
+ * Wiki (RF-08) in documentation mode: own top bar, a sidebar tree of sections, the reading view
+ * with backlinks, and a simple editor with preview. Esc goes back to the app.
+ */
 @Component({
   selector: 'app-wiki-page',
-  imports: [TranslocoPipe, NoteBody],
-  host: { '(keydown.escape)': 'onEscape($event)' },
+  imports: [TranslocoPipe, NoteBody, WikiTreeComponent],
+  host: {
+    class: 'flex h-full min-h-0 flex-col',
+    '(keydown.escape)': 'onEscape($event)',
+    '(document:keydown.escape)': 'onEscape($event)',
+  },
   template: `
-    <header class="mb-6 flex items-start justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-semibold">{{ 'nav.wiki' | transloco }}</h1>
-        <p class="mt-1 text-sm text-muted">{{ 'pages.wiki' | transloco }}</p>
+    <header
+      class="flex items-center justify-between gap-4 border-b border-line bg-canvas px-6 py-3"
+      data-testid="wiki-topbar"
+    >
+      <span class="text-lg font-semibold" data-testid="wiki-name">{{
+        'wiki.name' | transloco
+      }}</span>
+      <div class="flex items-center gap-2 text-sm">
+        <button
+          type="button"
+          class="rounded-md border border-line bg-surface px-3 py-1.5 text-muted outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+          data-testid="wiki-search"
+          (click)="launcher.open.set(true)"
+        >
+          {{ 'wiki.search' | transloco }}
+        </button>
+        <button
+          type="button"
+          class="rounded-md border border-line px-3 py-1.5 outline-none hover:bg-surface focus-visible:ring-2 focus-visible:ring-accent"
+          data-testid="wiki-exit"
+          (click)="guard(exit)"
+        >
+          {{ 'wiki.exit' | transloco }}
+        </button>
       </div>
-      <button
-        type="button"
-        class="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-ink"
-        data-testid="new-note"
-        (click)="guard(startNew)"
-      >
-        {{ 'wiki.new' | transloco }}
-      </button>
     </header>
     @if (pending()) {
       <div
-        class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-warn bg-surface-raised px-4 py-3 text-sm"
+        class="mx-6 mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-warn bg-surface-raised px-4 py-3 text-sm"
         role="alertdialog"
         data-testid="discard-confirm"
       >
@@ -63,35 +85,36 @@ interface Draft {
         </button>
       </div>
     }
-    <div class="grid gap-6 md:grid-cols-[16rem_1fr]">
-      <nav [attr.aria-label]="'nav.wiki' | transloco">
+    <div class="grid min-h-0 flex-1 md:grid-cols-[16rem_1fr]">
+      <nav
+        class="min-h-0 space-y-3 overflow-y-auto border-r border-line px-3 py-4"
+        [attr.aria-label]="'wiki.sidebar' | transloco"
+      >
+        <button
+          type="button"
+          class="w-full rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-ink outline-none focus-visible:ring-2 focus-visible:ring-ink"
+          data-testid="new-note"
+          (click)="guard(startNew)"
+        >
+          {{ 'wiki.new' | transloco }}
+        </button>
         @if (store.notes().length === 0) {
-          <p class="rounded-lg border border-line bg-surface px-4 py-3 text-sm text-muted">
+          <p
+            class="rounded-lg border border-line bg-surface px-4 py-3 text-sm text-muted"
+            data-testid="wiki-empty"
+          >
             {{ 'wiki.empty' | transloco }}
           </p>
         } @else {
-          <ul class="space-y-1" data-testid="note-list">
-            @for (n of store.notes(); track n.slug) {
-              <li>
-                <button
-                  type="button"
-                  class="w-full truncate rounded-md border px-3 py-2 text-left text-sm"
-                  [class]="
-                    store.current()?.slug === n.slug && !editing()
-                      ? 'border-accent text-accent'
-                      : 'border-line'
-                  "
-                  data-testid="note-item"
-                  (click)="guard(openNote, n.slug)"
-                >
-                  {{ n.title }}
-                </button>
-              </li>
-            }
-          </ul>
+          <app-wiki-tree
+            data-testid="note-list"
+            [tree]="store.tree()"
+            [currentSlug]="editing() ? null : (store.current()?.slug ?? null)"
+            (opened)="guard(openNote, $event)"
+          />
         }
       </nav>
-      <section class="min-w-0">
+      <section class="min-w-0 overflow-y-auto px-10 py-8">
         @if (editing() && draft(); as d) {
           <form
             class="space-y-3"
@@ -155,9 +178,23 @@ interface Draft {
           <article data-testid="note-view">
             <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
+                <nav
+                  class="mb-1 flex flex-wrap gap-1 text-xs text-muted"
+                  [attr.aria-label]="'wiki.breadcrumbs' | transloco"
+                  data-testid="breadcrumbs"
+                >
+                  @if (store.currentSectionTitle(); as section) {
+                    <span data-testid="breadcrumb-section">{{ section }}</span>
+                    <span aria-hidden="true">/</span>
+                  }
+                  <span data-testid="breadcrumb-page">{{ note.title }}</span>
+                </nav>
                 <h2 class="text-xl font-semibold" data-testid="note-view-title">
                   {{ note.title }}
                 </h2>
+                @if (note.description; as description) {
+                  <p class="mt-1 text-muted" data-testid="note-description">{{ description }}</p>
+                }
                 <p class="text-xs text-muted">
                   {{ 'wiki.updated' | transloco }} {{ date(note.updatedAt) }}
                 </p>
@@ -230,6 +267,8 @@ interface Draft {
 })
 export class WikiPage implements OnInit {
   protected readonly store = inject(WikiStore);
+  private readonly mode = inject(WikiMode);
+  protected readonly launcher = inject(SearchLauncher);
   private readonly transloco = inject(TranslocoService);
   protected readonly editing = signal(false);
   protected readonly draft = signal<Draft | null>(null);
@@ -290,14 +329,25 @@ export class WikiPage implements OnInit {
     this.pending.set(null);
   }
 
+  /** Leaves the Wiki for the screen it was entered from. */
+  protected readonly exit = (): void => {
+    this.stopEditing();
+    this.mode.exit();
+  };
+
   protected requestCancel(): void {
     this.guard(() => this.stopEditing());
   }
 
+  /** Esc closes the editor first (asking if there are changes); otherwise it leaves the Wiki. */
   protected onEscape(event: Event): void {
-    if (!this.editing()) return;
+    // Handled already, or meant for a dialog on top (quick capture, global search).
+    if (event.defaultPrevented || (event.target as Element | null)?.closest?.('[role="dialog"]')) {
+      return;
+    }
     event.preventDefault();
-    this.requestCancel();
+    if (this.editing()) this.requestCancel();
+    else this.guard(this.exit);
   }
 
   protected discard(): void {
