@@ -92,8 +92,13 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          pr=$(gh pr list --state open --base develop --author "app/orquestador-dev-javo" \
-            --json number,body --jq "[.[] | select(.body | test(\"Refs #${ISSUE}\\\\b\"))][0].number // empty")
+          # A PR opened seconds ago may not be listed yet, so retry for about a minute.
+          for attempt in 1 2 3 4 5 6; do
+            pr=$(gh pr list --state open --base develop --author "app/orquestador-dev-javo" \
+              --json number,body --jq "[.[] | select(.body | test(\"Refs #${ISSUE}\\\\b\"))][0].number // empty")
+            [ -n "$pr" ] && break
+            sleep 10
+          done
           if [ -z "$pr" ]; then
             echo "::error::The dev agent finished without opening a PR for #${ISSUE}."
             exit 1
