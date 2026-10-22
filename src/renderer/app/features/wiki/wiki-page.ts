@@ -1,11 +1,23 @@
 import { Component, computed, ElementRef, inject, OnInit, signal, viewChild } from '@angular/core';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
-import { extractToc, pageNavigation, type NoteError } from '../../../../shared/wiki';
+import {
+  extractToc,
+  pageNavigation,
+  type NoteError,
+  type SectionError,
+} from '../../../../shared/wiki';
 import { SearchLauncher } from '../search/search-launcher';
 import { NoteBody } from './note-body';
 import { WikiMode } from './wiki-mode';
 import { WikiStore } from './wiki.store';
-import { WikiTreeComponent } from './wiki-tree';
+import { WikiTreeComponent, type PageCreator } from './wiki-tree';
+
+export const SECTION_ERROR_KEYS: Record<SectionError, string> = {
+  empty: 'wiki.sectionErrors.empty',
+  invalid: 'wiki.sectionErrors.invalid',
+  duplicate: 'wiki.sectionErrors.duplicate',
+  io: 'wiki.sectionErrors.io',
+};
 
 export const NOTE_ERROR_KEYS: Record<NoteError, string> = {
   empty: 'wiki.errors.empty',
@@ -35,30 +47,50 @@ interface Draft {
   },
   template: `
     <header
-      class="flex items-center justify-between gap-4 border-b border-line bg-canvas px-6 py-3"
+      class="grid grid-cols-[1fr_minmax(0,28rem)_1fr] items-center gap-4 border-b border-line bg-canvas px-4 py-2.5"
       data-testid="wiki-topbar"
     >
-      <span class="text-lg font-semibold" data-testid="wiki-name">{{
-        'wiki.name' | transloco
-      }}</span>
-      <div class="flex items-center gap-2 text-sm">
-        <button
-          type="button"
-          class="rounded-md border border-line bg-surface px-3 py-1.5 text-muted outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
-          data-testid="wiki-search"
-          (click)="launcher.open.set(true)"
+      <div class="flex min-w-0 items-center gap-2" data-testid="wiki-brand">
+        <span
+          class="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent text-sm font-bold text-accent-ink"
+          aria-hidden="true"
+          data-testid="wiki-logo"
+          >O</span
         >
-          {{ 'wiki.search' | transloco }}
-        </button>
-        <button
-          type="button"
-          class="rounded-md border border-line px-3 py-1.5 outline-none hover:bg-surface focus-visible:ring-2 focus-visible:ring-accent"
-          data-testid="wiki-exit"
-          (click)="guard(exit)"
-        >
-          {{ 'wiki.exit' | transloco }}
-        </button>
+        <span class="truncate font-semibold" data-testid="wiki-name">{{
+          'wiki.name' | transloco
+        }}</span>
       </div>
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 rounded-md border border-line bg-surface px-3 py-1.5 text-sm text-muted outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+        data-testid="wiki-search"
+        (click)="launcher.open.set(true)"
+      >
+        <span aria-hidden="true">⌕</span>
+        <span class="flex-1 text-left" data-testid="wiki-search-label">{{
+          'wiki.search' | transloco
+        }}</span>
+        <kbd
+          class="rounded border border-line px-1.5 font-mono text-xs"
+          data-testid="wiki-search-shortcut"
+          >{{ 'wiki.searchShortcut' | transloco }}</kbd
+        >
+      </button>
+      <button
+        type="button"
+        class="flex items-center gap-2 justify-self-end rounded-md border border-line bg-surface px-3 py-1.5 text-sm font-semibold outline-none hover:bg-surface-raised focus-visible:ring-2 focus-visible:ring-accent"
+        data-testid="wiki-exit"
+        (click)="guard(exit)"
+      >
+        <span aria-hidden="true">←</span>
+        <span data-testid="wiki-exit-label">{{ 'wiki.exit' | transloco }}</span>
+        <kbd
+          class="rounded border border-line px-1.5 font-mono text-xs font-normal text-muted"
+          data-testid="wiki-exit-shortcut"
+          >{{ 'wiki.exitShortcut' | transloco }}</kbd
+        >
+      </button>
     </header>
     @if (pending()) {
       <div
@@ -90,15 +122,56 @@ interface Draft {
         class="min-h-0 space-y-3 overflow-y-auto border-r border-line px-3 py-4"
         [attr.aria-label]="'wiki.sidebar' | transloco"
       >
-        <button
-          type="button"
-          class="w-full rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-ink outline-none focus-visible:ring-2 focus-visible:ring-ink"
-          data-testid="new-note"
-          (click)="guard(startNew)"
-        >
-          {{ 'wiki.new' | transloco }}
-        </button>
-        @if (store.notes().length === 0) {
+        <div class="flex gap-2">
+          <button
+            type="button"
+            class="flex-1 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-accent-ink outline-none focus-visible:ring-2 focus-visible:ring-ink"
+            data-testid="new-note"
+            (click)="guard(startNew)"
+          >
+            {{ 'wiki.new' | transloco }}
+          </button>
+          <button
+            type="button"
+            class="flex-1 rounded-md border border-line px-3 py-2 text-sm outline-none hover:bg-surface focus-visible:ring-2 focus-visible:ring-accent"
+            data-testid="new-section"
+            [attr.aria-expanded]="creatingSection()"
+            (click)="toggleNewSection()"
+          >
+            {{ 'wiki.newSection' | transloco }}
+          </button>
+        </div>
+        @if (creatingSection()) {
+          <form
+            class="space-y-1"
+            data-testid="new-section-form"
+            (submit)="$event.preventDefault(); createSection(sectionName.value)"
+          >
+            <input
+              #sectionName
+              type="text"
+              class="w-full rounded-md border border-line bg-canvas px-2 py-1.5 text-sm text-ink outline-none focus:border-accent"
+              [attr.aria-label]="'wiki.sectionName' | transloco"
+              [placeholder]="'wiki.sectionName' | transloco"
+              data-testid="new-section-name"
+              (input)="sectionError.set(null)"
+              (keydown.escape)="$event.preventDefault(); toggleNewSection()"
+            />
+            @if (sectionError(); as key) {
+              <p class="text-xs text-warn" role="alert" data-testid="new-section-error">
+                {{ key | transloco }}
+              </p>
+            }
+            <button
+              type="submit"
+              class="rounded-md bg-accent px-3 py-1 text-sm font-semibold text-accent-ink"
+              data-testid="new-section-save"
+            >
+              {{ 'wiki.create' | transloco }}
+            </button>
+          </form>
+        }
+        @if (store.notes().length === 0 && store.sections().length === 0) {
           <p
             class="rounded-lg border border-line bg-surface px-4 py-3 text-sm text-muted"
             data-testid="wiki-empty"
@@ -110,6 +183,7 @@ interface Draft {
             data-testid="note-list"
             [tree]="store.tree()"
             [currentSlug]="editing() ? null : (store.current()?.slug ?? null)"
+            [createPage]="createPage"
             (opened)="guard(openNote, $event)"
           />
         }
@@ -365,6 +439,8 @@ export class WikiPage implements OnInit {
   protected readonly draft = signal<Draft | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly confirmingDelete = signal(false);
+  protected readonly creatingSection = signal(false);
+  protected readonly sectionError = signal<string | null>(null);
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
   /** Index entry the reader is on; null = the first one. */
   private readonly reached = signal<string | null>(null);
@@ -396,6 +472,43 @@ export class WikiPage implements OnInit {
     if (this.dirty()) this.pending.set(run);
     else run();
   }
+
+  protected toggleNewSection(): void {
+    this.sectionError.set(null);
+    this.creatingSection.update((open) => !open);
+  }
+
+  protected async createSection(name: string): Promise<void> {
+    let failure: SectionError | null;
+    try {
+      failure = await this.store.createSection(name);
+    } catch {
+      failure = 'io';
+    }
+    if (failure) {
+      this.sectionError.set(SECTION_ERROR_KEYS[failure]);
+      return;
+    }
+    this.creatingSection.set(false);
+  }
+
+  /** "+" of a section: creates an empty page there and opens it (asking first if unsaved). */
+  protected readonly createPage: PageCreator = async (section, title) => {
+    if (this.dirty()) {
+      this.pending.set(() => void this.createPage(section, title));
+      return null;
+    }
+    let failure: NoteError | null;
+    try {
+      failure = await this.store.create({ title, content: '', section });
+    } catch {
+      failure = 'io';
+    }
+    if (failure) return NOTE_ERROR_KEYS[failure];
+    this.stopEditing();
+    this.reached.set(null);
+    return null;
+  };
 
   protected readonly startNew = (): void => {
     this.editingSlug = null;

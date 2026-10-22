@@ -40,6 +40,14 @@ describe('theme', () => {
     expect(stylesCss).toMatch(/scrollbar-color:\s*var\(--color-line\)\s+var\(--color-canvas\)/);
   });
 
+  it('CP-08-73: every element, the wiki sidebar and content included, gets the dark scrollbar', () => {
+    // The rule targets `*`, so no scroll area of the Wiki falls back to the white default one.
+    expect(stylesCss).toMatch(
+      /\*\s*\{[^}]*scrollbar-color:\s*var\(--color-line\)\s+var\(--color-canvas\)/,
+    );
+    expect(stylesCss).toMatch(/::-webkit-scrollbar\s*\{[^}]*background:\s*var\(--color-canvas\)/);
+  });
+
   it('CP-N17-19: every chip and badge text/background pair has at least 4.5:1 contrast', () => {
     for (const [name, { fg, bg }] of Object.entries(CHIP_VARIANTS)) {
       expect(contrast(theme.get(fg)!, theme.get(bg)!), name).toBeGreaterThanOrEqual(4.5);

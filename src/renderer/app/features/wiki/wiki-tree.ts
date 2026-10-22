@@ -1,4 +1,14 @@
-import { Component, computed, ElementRef, inject, input, output, signal } from '@angular/core';
+import {
+  afterNextRender,
+  Component,
+  computed,
+  ElementRef,
+  inject,
+  Injector,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
 import type { WikiTree } from '../../../../shared/wiki';
 
@@ -13,9 +23,13 @@ interface Row {
 const pageKey = (slug: string): string => `p:${slug}`;
 const sectionKey = (name: string): string => `s:${name}`;
 
+/** Creates a page in a section; resolves to the locale key of the error, or null on success. */
+export type PageCreator = (section: string, title: string) => Promise<string | null>;
+
 /**
- * Sidebar tree of the Wiki: collapsible sections and their pages. Keyboard (RNF-06): arrows move,
- * Enter opens a page or toggles a section, ← / → fold and unfold. Folding never changes the open page.
+ * Sidebar tree of the Wiki: collapsible sections and their pages, each section with a "+" to add
+ * a page to it. Keyboard (RNF-06): arrows move, Enter opens a page or toggles a section, ← / →
+ * fold and unfold. Folding never changes the open page; a folded section holding it is marked.
  */
 @Component({
   selector: 'app-wiki-tree',
@@ -41,23 +55,66 @@ const sectionKey = (name: string): string => `s:${name}`;
         </li>
       }
       @for (section of tree().sections; track section.name) {
-        <li role="none" data-testid="wiki-section">
-          <button
-            type="button"
-            role="treeitem"
-            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] font-semibold tracking-widest text-muted uppercase outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
-            [attr.data-key]="sectionKey(section.name)"
-            [attr.aria-expanded]="!isCollapsed(section.name)"
-            aria-selected="false"
-            [attr.tabindex]="tabKey() === sectionKey(section.name) ? 0 : -1"
-            data-testid="wiki-section-toggle"
-            (click)="toggle(section.name)"
-          >
-            <span aria-hidden="true" class="w-3">{{ isCollapsed(section.name) ? '▸' : '▾' }}</span>
-            {{ section.title }}
-          </button>
+        <li role="none" class="pt-3 first:pt-0" data-testid="wiki-section">
+          <div class="flex items-center gap-1">
+            <button
+              type="button"
+              role="treeitem"
+              class="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left font-semibold outline-none hover:bg-surface focus-visible:ring-2 focus-visible:ring-accent"
+              [class.text-ink]="!marksCurrent(section.name)"
+              [class.text-accent]="marksCurrent(section.name)"
+              [attr.data-key]="sectionKey(section.name)"
+              [attr.aria-expanded]="!isCollapsed(section.name)"
+              [attr.data-contains-current]="marksCurrent(section.name) ? 'true' : null"
+              [attr.title]="
+                marksCurrent(section.name) ? ('wiki.containsCurrent' | transloco) : null
+              "
+              aria-selected="false"
+              [attr.tabindex]="tabKey() === sectionKey(section.name) ? 0 : -1"
+              data-testid="wiki-section-toggle"
+              (click)="toggle(section.name)"
+            >
+              <span class="truncate">{{ section.title }}</span>
+              <span aria-hidden="true" class="w-3 shrink-0 text-xs text-muted">{{
+                isCollapsed(section.name) ? '▸' : '▾'
+              }}</span>
+            </button>
+            <button
+              type="button"
+              class="rounded-md px-2 py-1 text-muted outline-none hover:bg-surface hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+              [attr.aria-label]="'wiki.addPage' | transloco: { section: section.title }"
+              [attr.title]="'wiki.addPage' | transloco: { section: section.title }"
+              data-testid="wiki-add-page"
+              (click)="startAdding(section.name)"
+            >
+              +
+            </button>
+          </div>
+          @if (adding() === section.name) {
+            <form
+              class="mt-1 space-y-1 pl-3"
+              data-testid="new-page-form"
+              (submit)="$event.preventDefault(); addPage(section.name, title.value)"
+            >
+              <input
+                #title
+                type="text"
+                class="w-full rounded-md border border-line bg-canvas px-2 py-1 text-ink outline-none focus:border-accent"
+                [attr.aria-label]="'wiki.pageTitle' | transloco"
+                [placeholder]="'wiki.pageTitle' | transloco"
+                data-testid="new-page-title"
+                (input)="pageError.set(null)"
+                (keydown.escape)="$event.preventDefault(); cancelAdding()"
+              />
+              @if (pageError(); as key) {
+                <p class="text-xs text-warn" role="alert" data-testid="new-page-error">
+                  {{ key | transloco }}
+                </p>
+              }
+            </form>
+          }
           @if (!isCollapsed(section.name)) {
-            <ul role="group" class="ml-3 space-y-0.5 border-l border-line pl-2">
+            <ul role="group" class="mt-0.5 space-y-0.5 pl-3">
               @for (page of section.pages; track page.slug) {
                 <li role="none">
                   <button
@@ -87,8 +144,14 @@ export class WikiTreeComponent {
   /** Slug of the open page, highlighted. */
   readonly currentSlug = input<string | null>(null);
   readonly opened = output<string>();
+  /** Called by the "+" of a section; without it the "+" does nothing. */
+  readonly createPage = input<PageCreator | null>(null);
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
+  /** Section whose "+" form is open. */
+  protected readonly adding = signal<string | null>(null);
+  protected readonly pageError = signal<string | null>(null);
   private readonly collapsed = signal<ReadonlySet<string>>(new Set());
   /** The row that last had focus: the one reachable with Tab. */
   private readonly focused = signal<string | null>(null);
@@ -120,8 +183,48 @@ export class WikiTreeComponent {
     return wanted.find((k) => k && keys.includes(k)) ?? keys[0] ?? null;
   });
 
+  /** Section that holds the open page. */
+  private readonly currentSection = computed(() => {
+    const slug = this.currentSlug();
+    return this.tree().sections.find((s) => s.pages.some((p) => p.slug === slug))?.name ?? null;
+  });
+
   protected isCollapsed(name: string): boolean {
     return this.collapsed().has(name);
+  }
+
+  /** A folded section hides the open page, so its heading shows that it holds it. */
+  protected marksCurrent(name: string): boolean {
+    return this.isCollapsed(name) && this.currentSection() === name;
+  }
+
+  protected startAdding(name: string): void {
+    this.pageError.set(null);
+    this.adding.set(name);
+    afterNextRender(
+      () =>
+        this.host.nativeElement
+          .querySelector<HTMLElement>('[data-testid="new-page-title"]')
+          ?.focus(),
+      { injector: this.injector },
+    );
+  }
+
+  protected cancelAdding(): void {
+    this.adding.set(null);
+    this.pageError.set(null);
+  }
+
+  protected async addPage(section: string, title: string): Promise<void> {
+    const create = this.createPage();
+    if (!create) return;
+    const error = await create(section, title);
+    if (error) {
+      this.pageError.set(error);
+      return;
+    }
+    this.cancelAdding();
+    this.setCollapsed(section, false);
   }
 
   protected toggle(name: string): void {
@@ -130,8 +233,8 @@ export class WikiTreeComponent {
 
   protected itemClass(current: boolean): string {
     return (
-      'w-full truncate rounded-md px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-accent ' +
-      (current ? 'bg-surface-raised font-semibold text-accent' : 'text-ink/80 hover:bg-surface')
+      'w-full rounded-md px-2 py-1.5 text-left break-words outline-none focus-visible:ring-2 focus-visible:ring-accent ' +
+      (current ? 'bg-accent font-semibold text-accent-ink' : 'text-ink/80 hover:bg-surface')
     );
   }
 
