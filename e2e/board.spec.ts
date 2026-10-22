@@ -91,6 +91,7 @@ test('CP-04-06: a project created from the board is in the list and combo box af
   await expect(page.getByTestId('board-project-item')).toHaveText(['sin-tareas']);
   await expect(page.getByTestId('board-select').locator('option')).toHaveText([
     'General',
+    'Sueltas',
     'sin-tareas',
   ]);
 
@@ -100,4 +101,23 @@ test('CP-04-06: a project created from the board is in the list and combo box af
   await reopened.page.getByRole('link', { name: 'Tablero' }).click();
   await expect(reopened.page.getByTestId('board-project-item')).toHaveText(['sin-tareas']);
   await expect(reopened.page.getByTestId('board-select')).toHaveValue(/\d+/);
+});
+
+test('CP-05-10: "Sueltas" shows only tasks without a project and is remembered after reopening', async () => {
+  const { page, app, dataDir } = launched;
+  await page.getByRole('link', { name: 'Tareas' }).click();
+  await addTask(page, 'Tarea suelta');
+  await addTask(page, 'Tarea con proyecto', 'api-gateway');
+  await page.getByRole('link', { name: 'Tablero' }).click();
+  await page.getByTestId('board-select').selectOption('loose');
+  await expect(page.getByTestId('board-card')).toHaveCount(1);
+  await expect(page.getByTestId('board-card').first()).toContainText('Tarea suelta');
+
+  await app.close();
+  const reopened = await launchApp(dataDir);
+  launched = reopened;
+  await reopened.page.getByRole('link', { name: 'Tablero' }).click();
+  await expect(reopened.page.getByTestId('board-select')).toHaveValue('loose');
+  await expect(reopened.page.getByTestId('board-card')).toHaveCount(1);
+  await expect(reopened.page.getByTestId('board-card').first()).toContainText('Tarea suelta');
 });
