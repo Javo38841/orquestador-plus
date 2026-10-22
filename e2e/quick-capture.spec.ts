@@ -64,5 +64,5 @@ test('CP-01-08: converting an inbox item creates a task with project and due dat
   await page.getByRole('link', { name: 'Tareas' }).click();
   const row = page.getByTestId('task-row').filter({ hasText: 'Calibrar sensor' });
   await expect(row.getByTestId('task-project-chip')).toHaveText('cabina');
-  await expect(row.getByTestId('task-due-date')).toHaveText('2026-12-31');
+  await expect(row.getByTestId('task-due-date')).toHaveText(/31 dic/);
 });

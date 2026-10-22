@@ -9,6 +9,7 @@ import { SettingsPage } from './settings-page';
 
 async function render(result: ExportResult) {
   const exportAll = vi.fn(async () => result);
+  const setRemindersEnabled = vi.fn(async (value: boolean) => value);
   await TestBed.configureTestingModule({
     imports: [
       SettingsPage,
@@ -18,16 +19,37 @@ async function render(result: ExportResult) {
         preloadLangs: true,
       }),
     ],
-    providers: [{ provide: DESKTOP_API, useValue: { exportAll } as unknown as OrquestadorApi }],
+    providers: [
+      {
+        provide: DESKTOP_API,
+        useValue: {
+          exportAll,
+          getRemindersEnabled: async () => true,
+          setRemindersEnabled,
+        } as unknown as OrquestadorApi,
+      },
+    ],
   }).compileComponents();
   const fixture = TestBed.createComponent(SettingsPage);
   fixture.detectChanges();
   const el = fixture.nativeElement as HTMLElement;
   const q = (id: string) => el.querySelector<HTMLElement>(`[data-testid="${id}"]`);
-  return { fixture, el, q, exportAll };
+  return { fixture, el, q, exportAll, setRemindersEnabled };
 }
 
 describe('SettingsPage', () => {
+  it('CP-05-22: the reminders switch lives in Ajustes and still saves the choice', async () => {
+    const { fixture, q, setRemindersEnabled } = await render({ ok: false, error: 'cancelled' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const toggle = q('reminders-enabled') as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    expect(setRemindersEnabled).toHaveBeenCalledWith(false);
+  });
+
   it('CP-11-11: shows what is exported, the button and the offline indicator from es.json', async () => {
     const { el, q } = await render({ ok: false, error: 'cancelled' });
     const text = el.textContent!;

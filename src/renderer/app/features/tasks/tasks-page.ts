@@ -1,5 +1,6 @@
 import {
   Component,
+  computed,
   DestroyRef,
   ElementRef,
   inject,
@@ -9,7 +10,7 @@ import {
 } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
-import { isOverdue, localDate, type Task, type TaskError } from '../../../../shared/tasks';
+import { type Task, type TaskError } from '../../../../shared/tasks';
 import {
   draftError,
   draftFromRule,
@@ -21,7 +22,11 @@ import {
 } from '../recurrence/recurrence-editor';
 import { recurrenceLabel } from '../recurrence/recurrence-label';
 import { SeriesList } from '../recurrence/series-list';
-import { RemindersToggle } from '../reminders/reminders-toggle';
+import { ProjectChip } from '../../shared/ui/project-chip';
+import { RelativeDate } from '../../shared/ui/relative-date';
+import { RepeatChip } from '../../shared/ui/repeat-chip';
+import { SegmentedTabs, type TabItem } from '../../shared/ui/segmented-tabs';
+import { RECURRENCE_KINDS, type RecurrenceKind } from '../../../../shared/recurrence';
 import { TAG_ERROR_KEYS, TagsEditor } from '../tags/tags-editor';
 import { TasksStore } from './tasks.store';
 
@@ -65,13 +70,21 @@ const EMPTY_DRAFT: Draft = {
 /** Tasks list (RF-02): create, edit, complete and delete, with an optional project. */
 @Component({
   selector: 'app-tasks-page',
-  imports: [TranslocoPipe, TagsEditor, RecurrenceEditor, SeriesList, RemindersToggle],
+  imports: [
+    TranslocoPipe,
+    TagsEditor,
+    RecurrenceEditor,
+    SeriesList,
+    SegmentedTabs,
+    ProjectChip,
+    RepeatChip,
+    RelativeDate,
+  ],
   template: `
     <header class="mb-6 flex items-start justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold">{{ 'nav.tasks' | transloco }}</h1>
         <p class="mt-1 text-sm text-muted">{{ 'pages.tasks' | transloco }}</p>
-        <app-reminders-toggle class="mt-2 block" />
       </div>
       <button
         type="button"
@@ -198,83 +211,112 @@ const EMPTY_DRAFT: Draft = {
       </form>
     }
 
-    <div class="mb-4 flex gap-2 border-b border-line text-sm" role="tablist">
-      @for (t of tabs; track t) {
-        <button
-          type="button"
-          role="tab"
-          class="-mb-px border-b-2 px-3 py-2"
-          [attr.data-testid]="'tab-' + t"
-          [attr.aria-selected]="tab() === t"
-          [class]="tab() === t ? 'border-accent text-accent' : 'border-transparent text-muted'"
-          (click)="tab.set(t)"
-        >
-          {{ 'tasks.tabs.' + t | transloco }}
-        </button>
-      }
-    </div>
+    <app-segmented-tabs
+      class="mb-4 block"
+      [tabs]="tabItems()"
+      [selected]="tab()"
+      (selectedChange)="selectTab($event)"
+    />
 
     @if (tab() === 'series') {
       <app-series-list (edit)="openForm($event)" />
     } @else {
-      <label class="mb-3 flex items-center gap-2 text-sm text-muted">
-        <input
-          type="checkbox"
-          data-testid="show-completed"
-          [checked]="store.showCompleted()"
-          (change)="store.showCompleted.set($any($event.target).checked)"
-        />
-        {{ 'tasks.showCompleted' | transloco }}
-      </label>
-
-      @if (store.tags().length > 0) {
-        <div class="mb-3 flex flex-wrap items-center gap-2 text-sm" data-testid="tag-filter">
-          <span class="text-muted">{{ 'tasks.filterByTag' | transloco }}</span>
-          <button
-            type="button"
-            class="rounded-full border px-2 py-0.5 text-xs"
-            data-testid="tag-filter-all"
-            [class]="store.tagFilter() === null ? 'border-accent text-accent' : 'border-line'"
-            (click)="store.tagFilter.set(null)"
-          >
-            {{ 'tasks.allTags' | transloco }}
-          </button>
-          @for (tag of store.tags(); track tag) {
-            <button
-              type="button"
-              class="rounded-full border px-2 py-0.5 text-xs"
-              data-testid="tag-filter-option"
-              [class]="store.tagFilter() === tag ? 'border-accent text-accent' : 'border-line'"
-              [attr.aria-pressed]="store.tagFilter() === tag"
-              (click)="store.tagFilter.set(store.tagFilter() === tag ? null : tag)"
-            >
-              #{{ tag }}
-            </button>
+      <div class="mb-3 flex flex-wrap items-center gap-3 text-sm" data-testid="task-filters">
+        <select
+          class="rounded-md border border-line bg-canvas px-2 py-1 text-ink"
+          data-testid="filter-project"
+          [attr.aria-label]="'tasks.filters.project' | transloco"
+          (change)="store.projectFilter.set(toProject($any($event.target).value))"
+        >
+          <option value="" [selected]="store.projectFilter() === null">
+            {{ 'tasks.filters.allProjects' | transloco }}
+          </option>
+          <option value="loose" [selected]="store.projectFilter() === 'loose'">
+            {{ 'tasks.filters.loose' | transloco }}
+          </option>
+          @for (project of store.projects(); track project.id) {
+            <option [value]="project.id" [selected]="store.projectFilter() === project.id">
+              {{ project.name }}
+            </option>
           }
-        </div>
-      }
+        </select>
+        <select
+          class="rounded-md border border-line bg-canvas px-2 py-1 text-ink"
+          data-testid="filter-repeat"
+          [attr.aria-label]="'tasks.filters.repeat' | transloco"
+          (change)="store.kindFilter.set(toKind($any($event.target).value))"
+        >
+          <option value="" [selected]="store.kindFilter() === null">
+            {{ 'tasks.filters.allRepeats' | transloco }}
+          </option>
+          @for (kind of kinds; track kind) {
+            <option [value]="kind" [selected]="store.kindFilter() === kind">
+              {{ 'recurrence.kinds.' + kind | transloco }}
+            </option>
+          }
+        </select>
+        @if (store.tags().length > 0) {
+          <select
+            class="rounded-md border border-line bg-canvas px-2 py-1 text-ink"
+            data-testid="filter-tag"
+            [attr.aria-label]="'tasks.filters.tag' | transloco"
+            (change)="store.tagFilter.set($any($event.target).value || null)"
+          >
+            <option value="" [selected]="store.tagFilter() === null">
+              {{ 'tasks.filters.allTags' | transloco }}
+            </option>
+            @for (tag of store.tags(); track tag) {
+              <option [value]="tag" [selected]="store.tagFilter() === tag">#{{ tag }}</option>
+            }
+          </select>
+        }
+        <label class="flex items-center gap-2 text-muted">
+          <input
+            type="checkbox"
+            data-testid="show-completed"
+            [checked]="store.showCompleted()"
+            (change)="store.showCompleted.set($any($event.target).checked)"
+          />
+          {{ 'tasks.showCompleted' | transloco }}
+        </label>
+        <span class="ml-auto text-muted" data-testid="task-count">{{
+          'tasks.count.' + (store.visible().length === 1 ? 'one' : 'other')
+            | transloco: { count: store.visible().length }
+        }}</span>
+      </div>
 
       @if (store.visible().length === 0) {
-        <p class="rounded-lg border border-line bg-surface px-5 py-4 text-sm text-muted">
-          {{ (store.tasks().length === 0 ? 'tasks.empty' : 'tasks.emptyPending') | transloco }}
+        <p
+          class="rounded-lg border border-line bg-surface px-5 py-4 text-sm text-muted"
+          data-testid="task-empty"
+        >
+          {{
+            (store.tasks().length === 0
+              ? 'tasks.empty'
+              : filtering()
+                ? 'tasks.emptyFiltered'
+                : 'tasks.emptyPending'
+            ) | transloco
+          }}
         </p>
       } @else {
         <div class="rounded-lg border border-line bg-surface" data-testid="task-list">
           <div
-            class="grid grid-cols-[1fr_10rem_9rem_auto] gap-4 border-b border-line px-5 py-2 text-[11px] font-semibold tracking-widest text-muted uppercase"
+            class="grid grid-cols-[1fr_9rem_11rem_8rem_12rem] gap-4 border-b border-line px-4 py-1.5 text-[11px] font-semibold tracking-widest text-muted uppercase"
           >
             <span>{{ 'tasks.columns.task' | transloco }}</span>
             <span>{{ 'tasks.columns.project' | transloco }}</span>
+            <span>{{ 'tasks.columns.repeat' | transloco }}</span>
             <span>{{ 'tasks.columns.due' | transloco }}</span>
             <span></span>
           </div>
           @for (task of store.visible(); track task.id) {
             <div
-              class="grid grid-cols-[1fr_10rem_9rem_auto] items-center gap-4 border-b border-line px-5 py-3 last:border-b-0"
+              class="group grid grid-cols-[1fr_9rem_11rem_8rem_12rem] items-center gap-4 border-b border-line px-4 py-1.5 last:border-b-0 hover:bg-surface-raised"
               data-testid="task-row"
               [attr.data-task-id]="task.id"
               [attr.data-highlighted]="task.id === highlightedId() ? 'true' : null"
-              [class.bg-surface]="task.id === highlightedId()"
+              [class.bg-surface-raised]="task.id === highlightedId()"
             >
               <div class="min-w-0">
                 <label class="flex min-w-0 items-center gap-3">
@@ -286,14 +328,16 @@ const EMPTY_DRAFT: Draft = {
                     (change)="store.setDone(task, $any($event.target).checked)"
                   />
                   <span
-                    class="min-w-0 break-words"
+                    class="min-w-0 truncate"
+                    data-testid="task-title-text"
+                    [attr.title]="task.title"
                     [class.line-through]="task.status === 'done'"
                     [class.text-muted]="task.status === 'done'"
                     >{{ task.title }}</span
                   >
                   @if (task.reminderAt; as when) {
                     <span
-                      class="rounded-full bg-line px-2 py-0.5 text-xs text-muted"
+                      class="shrink-0 rounded-full bg-line px-2 py-0.5 text-xs text-muted"
                       data-testid="task-reminder-chip"
                       >{{
                         (task.reminderNotifiedAt ? 'tasks.reminderDone' : 'tasks.reminderChip')
@@ -301,47 +345,50 @@ const EMPTY_DRAFT: Draft = {
                       }}</span
                     >
                   }
-                  @if (chip(task); as text) {
-                    <span
-                      class="rounded-full bg-repeat/20 px-2 py-0.5 text-xs text-repeat"
-                      data-testid="task-repeat-chip"
-                      >{{ text }}</span
-                    >
-                  }
                 </label>
                 @if (task.tags.length > 0) {
-                  <div class="mt-1 flex flex-wrap gap-1 pl-7">
+                  <div class="flex flex-wrap gap-x-2 pl-7 text-[11px] text-muted">
                     @for (tag of task.tags; track tag) {
-                      <span
-                        class="rounded-full bg-line px-2 py-0.5 text-xs text-muted"
-                        data-testid="task-tag"
-                        >#{{ tag }}</span
-                      >
+                      <span data-testid="task-tag">#{{ tag }}</span>
                     }
                   </div>
                 }
               </div>
-              <span>
-                <span
-                  class="rounded-full px-2 py-0.5 text-xs"
-                  data-testid="task-project-chip"
-                  [class]="task.projectName ? 'bg-project/20 text-project' : 'bg-line text-muted'"
-                  >{{ task.projectName ?? ('tasks.loose' | transloco) }}</span
-                >
+              <span class="min-w-0" data-testid="task-project-chip">
+                <app-project-chip [name]="task.projectName" />
+              </span>
+              <span data-testid="task-repeat">
+                @if (chip(task); as text) {
+                  <app-repeat-chip data-testid="task-repeat-chip" [label]="text" />
+                } @else {
+                  <span class="text-sm text-muted">{{ 'recurrence.kinds.once' | transloco }}</span>
+                }
+              </span>
+              <span class="text-sm" data-testid="task-due-date">
+                @if (task.dueDate) {
+                  <app-relative-date
+                    [date]="task.dueDate"
+                    [done]="task.status === 'done'"
+                    [compact]="true"
+                  />
+                } @else {
+                  <span class="text-muted">–</span>
+                }
               </span>
               <span
-                class="text-sm"
-                data-testid="task-due-date"
-                [class.text-warn]="overdue(task)"
-                [class.text-muted]="!overdue(task)"
-                >{{ task.dueDate ?? '' }}</span
+                class="flex items-center justify-end gap-2 text-sm"
+                [class]="
+                  confirming() === task.id
+                    ? ''
+                    : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
+                "
+                data-testid="task-actions"
               >
-              <span class="flex items-center gap-2 text-sm">
                 @if (confirming() === task.id) {
                   <span class="text-warn">{{ 'tasks.confirmDelete' | transloco }}</span>
                   <button
                     type="button"
-                    class="rounded-md border border-warn px-2 py-1 text-warn"
+                    class="rounded-md border border-warn px-2 py-0.5 text-warn"
                     data-testid="task-delete-confirm"
                     (click)="remove(task)"
                   >
@@ -349,7 +396,7 @@ const EMPTY_DRAFT: Draft = {
                   </button>
                   <button
                     type="button"
-                    class="rounded-md border border-line px-2 py-1"
+                    class="rounded-md border border-line px-2 py-0.5"
                     (click)="confirming.set(null)"
                   >
                     {{ 'tasks.confirmNo' | transloco }}
@@ -358,7 +405,7 @@ const EMPTY_DRAFT: Draft = {
                   @if (task.status !== 'done') {
                     <button
                       type="button"
-                      class="rounded-md border px-2 py-1"
+                      class="rounded-md border px-2 py-0.5"
                       data-testid="task-today"
                       [class]="task.forToday ? 'border-accent text-accent' : 'border-line'"
                       [attr.aria-pressed]="task.forToday"
@@ -369,7 +416,7 @@ const EMPTY_DRAFT: Draft = {
                   }
                   <button
                     type="button"
-                    class="rounded-md border border-line px-2 py-1"
+                    class="rounded-md border border-line px-2 py-0.5"
                     data-testid="task-edit"
                     (click)="openForm(task)"
                   >
@@ -377,7 +424,7 @@ const EMPTY_DRAFT: Draft = {
                   </button>
                   <button
                     type="button"
-                    class="rounded-md border border-line px-2 py-1"
+                    class="rounded-md border border-line px-2 py-0.5"
                     data-testid="task-delete"
                     (click)="confirming.set(task.id)"
                   >
@@ -400,8 +447,27 @@ export class TasksPage implements OnInit {
   protected readonly error = signal<string | null>(null);
   protected readonly confirming = signal<number | null>(null);
   private readonly transloco = inject(TranslocoService);
-  protected readonly tabs = ['tasks', 'series'] as const;
-  protected readonly tab = signal<(typeof this.tabs)[number]>('tasks');
+  protected readonly kinds: readonly RecurrenceKind[] = RECURRENCE_KINDS;
+  protected readonly tab = signal<'tasks' | 'series'>('tasks');
+  protected readonly tabItems = computed<TabItem[]>(() => [
+    {
+      id: 'tasks',
+      label: this.transloco.translate('tasks.tabs.tasks'),
+      count: this.store.pendingCount(),
+    },
+    {
+      id: 'series',
+      label: this.transloco.translate('tasks.tabs.series'),
+      count: this.store.seriesCount(),
+    },
+  ]);
+  /** True when a combo narrows the list, to tell "no matches" from "nothing pending". */
+  protected readonly filtering = computed(
+    () =>
+      this.store.projectFilter() !== null ||
+      this.store.kindFilter() !== null ||
+      this.store.tagFilter() !== null,
+  );
   private readonly tagsEditor = viewChild(TagsEditor);
 
   private readonly route = inject(ActivatedRoute, { optional: true });
@@ -426,6 +492,8 @@ export class TasksPage implements OnInit {
     if (!task) return;
     this.tab.set('tasks');
     this.store.tagFilter.set(null);
+    this.store.projectFilter.set(null);
+    this.store.kindFilter.set(null);
     if (task.status === 'done') this.store.showCompleted.set(true);
     setTimeout(() =>
       (this.host.nativeElement as HTMLElement)
@@ -434,12 +502,22 @@ export class TasksPage implements OnInit {
     );
   }
 
-  protected chip(task: Task): string {
-    return recurrenceLabel(this.transloco, task.recurrence);
+  protected selectTab(id: string): void {
+    this.tab.set(id === 'series' ? 'series' : 'tasks');
   }
 
-  protected overdue(task: Task): boolean {
-    return isOverdue(task, localDate());
+  protected toProject(value: string): number | 'loose' | null {
+    return value === '' ? null : value === 'loose' ? 'loose' : Number(value);
+  }
+
+  protected toKind(value: string): RecurrenceKind | null {
+    return (RECURRENCE_KINDS as readonly string[]).includes(value)
+      ? (value as RecurrenceKind)
+      : null;
+  }
+
+  protected chip(task: Task): string {
+    return recurrenceLabel(this.transloco, task.recurrence);
   }
 
   openForm(task: Task | null): void {
