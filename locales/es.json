@@ -323,9 +323,23 @@
       "notFound": "La nota ya no existe",
       "io": "No se pudo guardar el archivo de la nota"
     },
-    "name": "Wiki",
-    "search": "Buscar en la wiki · Ctrl K",
-    "exit": "Salir de la wiki · Esc",
+    "name": "Wiki de OrquestadorPlus",
+    "search": "Buscar en la wiki",
+    "searchShortcut": "Ctrl K",
+    "exit": "Salir de la wiki",
+    "exitShortcut": "Esc",
+    "newSection": "Nueva sección",
+    "sectionName": "Nombre de la sección",
+    "create": "Crear",
+    "addPage": "Nueva página en {{section}}",
+    "pageTitle": "Título de la página",
+    "containsCurrent": "Contiene la página abierta",
+    "sectionErrors": {
+      "empty": "El nombre de la sección no puede estar vacío",
+      "invalid": "El nombre no puede tener / \\ : * ? \" < > | ni .. ni empezar con . o _",
+      "duplicate": "Ya existe una sección con ese nombre",
+      "io": "No se pudo crear la carpeta de la sección"
+    },
     "sidebar": "Secciones de la wiki",
     "breadcrumbs": "Ruta de la página",
     "callout": {

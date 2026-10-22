@@ -1,6 +1,6 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 import type { Bug } from '../../shared/bugs';
 import type { AppInfo, OrquestadorApi } from '../../shared/ipc';
@@ -37,6 +37,7 @@ function fakeApi(overrides: Partial<AppInfo> = {}, bugs: Bug[] = []): Orquestado
     deleteProject: async () => false,
     listNotes: async () => [],
     listSections: async () => [],
+    createSection: async () => ({ ok: false, error: 'io' }),
     getNote: async () => ({ ok: false, error: 'not_found' }),
     createNote: async () => ({ ok: false, error: 'empty' }),
     updateNote: async () => ({ ok: false, error: 'not_found' }),
@@ -152,6 +153,18 @@ describe('App', () => {
 
     expect(el.querySelector('app-search-palette')).not.toBeNull();
     expect(el.querySelector('app-capture-panel')).toBeNull();
+  });
+
+  it('CP-08-60: inside the Wiki, Ctrl+K still opens the search palette', async () => {
+    const el = await render(fakeApi());
+    await TestBed.inject(Router).navigateByUrl('/wiki');
+    TestBed.inject(ApplicationRef).tick();
+    expect(el.querySelector('[data-testid="wiki-topbar"]')).not.toBeNull();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', ctrlKey: true }));
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(el.querySelector('app-search-palette')).not.toBeNull();
   });
 
   it('CP-09-10: the sidebar shows the number of open bugs', async () => {

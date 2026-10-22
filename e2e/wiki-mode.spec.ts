@@ -30,9 +30,9 @@ test.afterEach(async () => {
 
 test('CP-08-28: entering the Wiki switches to documentation mode', async () => {
   const { page } = launched;
-  await expect(page.getByTestId('wiki-name')).toHaveText('Wiki');
-  await expect(page.getByTestId('wiki-search')).toHaveText('Buscar en la wiki · Ctrl K');
-  await expect(page.getByTestId('wiki-exit')).toHaveText('Salir de la wiki · Esc');
+  await expect(page.getByTestId('wiki-name')).toHaveText('Wiki de OrquestadorPlus');
+  await expect(page.getByTestId('wiki-search-label')).toHaveText('Buscar en la wiki');
+  await expect(page.getByTestId('wiki-exit-label')).toHaveText('Salir de la wiki');
   await expect(page.getByTestId('open-search')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Tareas' })).toHaveCount(0);
 });

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import type { OrquestadorApi } from '../../../../shared/ipc';
-import type { Note, NoteResult } from '../../../../shared/wiki';
+import type { Note, NoteResult, SectionResult, SectionSummary } from '../../../../shared/wiki';
 import { DESKTOP_API } from '../../core/desktop-api';
 import { WikiStore } from './wiki.store';
 
@@ -16,7 +16,11 @@ const note = (slug: string, content = ''): Note => ({
 
 function setup(result: NoteResult = { ok: true, note: note('A') }) {
   const api = {
-    listSections: vi.fn(async () => []),
+    listSections: vi.fn(async (): Promise<SectionSummary[]> => []),
+    createSection: vi.fn(async (): Promise<SectionResult> => ({
+      ok: true,
+      section: { name: 'Guías', title: 'Guías' },
+    })),
     listNotes: vi.fn(async () => [note('A'), note('Guía de B')]),
     getNote: vi.fn(async () => result),
     createNote: vi.fn(async () => result),
@@ -73,5 +77,40 @@ describe('WikiStore', () => {
     const { store } = setup({ ok: false, error: 'not_found' });
     expect(await store.openNote('Z')).toBe('not_found');
     expect(store.current()).toBeNull();
+  });
+
+  it('CP-08-67: creates a section with the trimmed name and reloads the tree', async () => {
+    const { store, api } = setup();
+    api.createSection.mockImplementation(async () => {
+      api.listSections.mockResolvedValue([{ name: 'Guías', title: 'Guías' }]);
+      return { ok: true, section: { name: 'Guías', title: 'Guías' } };
+    });
+    expect(await store.createSection('  Guías ')).toBeNull();
+    expect(api.createSection).toHaveBeenCalledWith({ title: 'Guías' });
+    expect(store.tree().sections.map((s) => s.name)).toEqual(['Guías']);
+  });
+
+  it('CP-08-68: rejects empty, unsafe and existing names before calling main', async () => {
+    const { store, api } = setup();
+    api.listSections.mockResolvedValue([{ name: 'Guías', title: 'Guías' }]);
+    await store.load();
+    expect(await store.createSection('  ')).toBe('empty');
+    expect(await store.createSection('a/b')).toBe('invalid');
+    expect(await store.createSection('..')).toBe('invalid');
+    expect(await store.createSection('GUÍAS')).toBe('duplicate');
+    expect(api.createSection).not.toHaveBeenCalled();
+
+    api.createSection.mockResolvedValue({ ok: false, error: 'duplicate' });
+    expect(await store.createSection('Otra')).toBe('duplicate');
+  });
+
+  it('CP-08-70: creates a page inside the given section', async () => {
+    const { store, api } = setup();
+    expect(await store.create({ title: 'Instalación', content: '', section: 'Guías' })).toBeNull();
+    expect(api.createNote).toHaveBeenCalledWith({
+      title: 'Instalación',
+      content: '',
+      section: 'Guías',
+    });
   });
 });

@@ -1,7 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 import type { OrquestadorApi } from '../../../../shared/ipc';
-import type { Note, NoteResult, NoteSummary, SectionSummary } from '../../../../shared/wiki';
+import type {
+  Note,
+  NoteResult,
+  NoteSummary,
+  SectionResult,
+  SectionSummary,
+} from '../../../../shared/wiki';
 import { DESKTOP_API } from '../../core/desktop-api';
 import { TRANSLATIONS } from '../../i18n/transloco-loader';
 import { SearchLauncher } from '../search/search-launcher';
@@ -39,7 +45,10 @@ async function render(
   const mode = { exit: vi.fn() };
   const api = {
     listSections: vi.fn(async () => fixtures.sections ?? []),
-    listNotes: vi.fn(async () => fixtures.notes ?? [summary('A'), summary('B')]),
+    createSection: vi.fn(async (): Promise<SectionResult> => ({ ok: false, error: 'io' })),
+    listNotes: vi.fn(
+      async (): Promise<NoteSummary[]> => fixtures.notes ?? [summary('A'), summary('B')],
+    ),
     getNote: vi.fn(async (slug: string): Promise<NoteResult> => ({
       ok: true,
       note: fixtures.notesByContent?.[slug] ?? (slug === 'A' ? noteA : noteB),
@@ -198,13 +207,45 @@ describe('WikiPage', () => {
 
     it('CP-08-28: has its own top bar with the wiki name, search and exit', async () => {
       const { el } = await render();
-      expect(el.querySelector('[data-testid="wiki-name"]')?.textContent?.trim()).toBe('Wiki');
-      expect(el.querySelector('[data-testid="wiki-search"]')?.textContent?.trim()).toBe(
-        'Buscar en la wiki · Ctrl K',
-      );
-      expect(el.querySelector('[data-testid="wiki-exit"]')?.textContent?.trim()).toBe(
-        'Salir de la wiki · Esc',
-      );
+      const text = (id: string) => el.querySelector(`[data-testid="${id}"]`)?.textContent?.trim();
+      expect(text('wiki-name')).toBe('Wiki de OrquestadorPlus');
+      expect(text('wiki-search-label')).toBe('Buscar en la wiki');
+      expect(text('wiki-exit-label')).toBe('Salir de la wiki');
+    });
+
+    it('CP-08-59: top bar has logo and name left, search centred with Ctrl K, exit with Esc right', async () => {
+      const { el } = await render();
+      const bar = el.querySelector('[data-testid="wiki-topbar"]')!;
+      const [left, middle, right] = Array.from(bar.children) as HTMLElement[];
+      expect(bar.children).toHaveLength(3);
+      expect(bar.className).toContain('grid-cols-[1fr_minmax(0,28rem)_1fr]');
+      expect(left.querySelector('[data-testid="wiki-logo"]')).not.toBeNull();
+      expect(left.textContent).toContain('Wiki de OrquestadorPlus');
+      expect(middle.dataset['testid']).toBe('wiki-search');
+      expect(middle.querySelector('kbd')?.textContent?.trim()).toBe('Ctrl K');
+      expect(right.dataset['testid']).toBe('wiki-exit');
+      expect(Array.from(right.children).map((c) => c.textContent?.trim())).toEqual([
+        '←',
+        'Salir de la wiki',
+        'Esc',
+      ]);
+      expect(right.querySelector('kbd')?.textContent?.trim()).toBe('Esc');
+      expect(right.className).toContain('justify-self-end');
+    });
+
+    it('CP-08-60: clicking the search box opens the search as before', async () => {
+      const { click } = await render();
+      await click('wiki-search');
+      expect(TestBed.inject(SearchLauncher).open()).toBe(true);
+    });
+
+    it('CP-08-61: Esc and "Salir de la wiki" still leave the wiki', async () => {
+      const { mode, click, fixture, settle } = await render();
+      await click('wiki-exit');
+      expect(mode.exit).toHaveBeenCalledTimes(1);
+      await escape(fixture, settle);
+      expect(mode.exit).toHaveBeenCalledTimes(2);
+      fixture.nativeElement.remove();
     });
 
     it('CP-08-28: "Buscar en la wiki" opens the global search', async () => {
@@ -340,6 +381,133 @@ describe('WikiPage right column and footer', () => {
   });
   const text = (el: HTMLElement, id: string, i = 0) =>
     el.querySelectorAll(`[data-testid="${id}"]`)[i]?.textContent?.trim();
+
+  describe('creating sections and pages from the sidebar', () => {
+    const withSections = (sections: SectionSummary[], notes: NoteSummary[] = []) => ({
+      notes,
+      sections,
+    });
+
+    it('CP-08-67: "Nueva sección" creates the section and shows it while empty', async () => {
+      const { api, el, click, type, settle } = await render(undefined, withSections([]));
+      api.createSection.mockImplementation(async () => {
+        api.listSections.mockResolvedValue([{ name: 'Guías', title: 'Guías' }]);
+        return { ok: true, section: { name: 'Guías', title: 'Guías' } };
+      });
+      expect(el.querySelector('[data-testid="wiki-empty"]')).not.toBeNull();
+
+      await click('new-section');
+      await type('new-section-name', ' Guías ');
+      await click('new-section-save');
+      await new Promise((resolve) => setTimeout(resolve));
+      await settle();
+
+      expect(api.createSection).toHaveBeenCalledWith({ title: 'Guías' });
+      const headings = el.querySelectorAll('[data-testid="wiki-section-toggle"]');
+      expect(Array.from(headings).map((h) => h.textContent?.replace(/[▸▾]/, '').trim())).toEqual([
+        'Guías',
+      ]);
+      expect(el.querySelector('[data-testid="wiki-empty"]')).toBeNull();
+      expect(el.querySelector('[data-testid="new-section-form"]')).toBeNull();
+    });
+
+    it('CP-08-68: empty, unsafe or repeated names show a Spanish error and create nothing', async () => {
+      const { api, el, click, type, settle } = await render(
+        undefined,
+        withSections([{ name: 'Guías', title: 'Guías' }]),
+      );
+      await click('new-section');
+      const error = () =>
+        el.querySelector('[data-testid="new-section-error"]')?.textContent?.trim();
+
+      for (const [name, message] of [
+        ['', 'El nombre de la sección no puede estar vacío'],
+        ['   ', 'El nombre de la sección no puede estar vacío'],
+        ['a/b', 'El nombre no puede tener / \\ : * ? " < > | ni .. ni empezar con . o _'],
+        ['..', 'El nombre no puede tener / \\ : * ? " < > | ni .. ni empezar con . o _'],
+        ['guías', 'Ya existe una sección con ese nombre'],
+      ]) {
+        await type('new-section-name', name);
+        await click('new-section-save');
+        await new Promise((resolve) => setTimeout(resolve));
+        await settle();
+        expect(error(), name).toBe(message);
+      }
+      expect(api.createSection).not.toHaveBeenCalled();
+      expect(el.querySelectorAll('[data-testid="wiki-section-toggle"]')).toHaveLength(1);
+    });
+
+    it('CP-08-70: the "+" of a section creates a page there, opens it and lists it under it', async () => {
+      const created: Note = {
+        ...summary('Instalación'),
+        section: 'Guías',
+        content: '',
+        links: [],
+        backlinks: [],
+      };
+      const { api, el, click, type, settle } = await render(
+        { ok: true, note: created },
+        withSections([{ name: 'Guías', title: 'Guías' }]),
+      );
+      api.createNote.mockImplementation(async () => {
+        api.listNotes.mockResolvedValue([{ ...summary('Instalación'), section: 'Guías' }]);
+        return { ok: true, note: created };
+      });
+
+      await click('wiki-add-page');
+      await type('new-page-title', 'Instalación');
+      (el.querySelector('[data-testid="new-page-form"]') as HTMLFormElement).requestSubmit();
+      await new Promise((resolve) => setTimeout(resolve));
+      await settle();
+
+      expect(api.createNote).toHaveBeenCalledWith({
+        title: 'Instalación',
+        content: '',
+        section: 'Guías',
+      });
+      expect(el.querySelector('[data-testid="note-view-title"]')?.textContent?.trim()).toBe(
+        'Instalación',
+      );
+      const group = el.querySelector('[data-testid="wiki-section"] [role="group"]')!;
+      expect(group.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('Instalación');
+      expect(el.querySelector('[data-testid="new-page-form"]')).toBeNull();
+    });
+
+    it('CP-08-71: an empty or repeated page title shows a Spanish error and creates nothing', async () => {
+      const { api, el, click, type, settle } = await render(
+        { ok: false, error: 'duplicate' },
+        withSections([{ name: 'Guías', title: 'Guías' }], [{ ...summary('A'), section: 'Guías' }]),
+      );
+      const submit = async () => {
+        (el.querySelector('[data-testid="new-page-form"]') as HTMLFormElement).requestSubmit();
+        await new Promise((resolve) => setTimeout(resolve));
+        await settle();
+      };
+      const error = () => el.querySelector('[data-testid="new-page-error"]')?.textContent?.trim();
+      await click('wiki-add-page');
+
+      await type('new-page-title', '   ');
+      await submit();
+      expect(error()).toBe('El título no puede estar vacío');
+      expect(api.createNote).not.toHaveBeenCalled();
+
+      await type('new-page-title', 'A');
+      await submit();
+      expect(error()).toBe('Ya existe una nota con ese título o nombre de archivo');
+      expect(el.querySelectorAll('[data-testid="note-item"]')).toHaveLength(1);
+      expect(el.querySelector('[data-testid="note-view"]')).toBeNull();
+    });
+
+    it('CP-08-73: sidebar and content scroll in their own dark areas', async () => {
+      const { el } = await render();
+      const sidebar = el.querySelector('nav[aria-label="Secciones de la wiki"]')!;
+      const content = el.querySelector('[data-testid="wiki-scroll"]')!;
+      for (const area of [sidebar, content]) {
+        expect(area.className).toContain('overflow-y-auto');
+        expect(area.className).not.toMatch(/scrollbar-(light|white)/);
+      }
+    });
+  });
 
   it('CP-08-37: shows the index, backlinks, edit button, long date and neighbours', async () => {
     const { el, click } = await render(undefined, fixtures());

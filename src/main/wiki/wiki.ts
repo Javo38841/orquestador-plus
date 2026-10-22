@@ -10,10 +10,12 @@ import {
   SECTION_FILE,
   slugFromTitle,
   validateNoteInput,
+  validateSectionInput,
   type Note,
   type NoteError,
   type NoteResult,
   type NoteSummary,
+  type SectionResult,
   type SectionSummary,
 } from '../../shared/wiki';
 
@@ -222,13 +224,18 @@ export function listNotes(wiki: Wiki, section?: unknown): NoteSummary[] {
   return rows.map(toSummary);
 }
 
-/** Folders that hold at least one note, with the title and order from their `_section.md`. */
+/**
+ * Folders that hold at least one note or a `_section.md`, with the title and order from it.
+ * A section created from the sidebar shows here before it has pages.
+ */
 export function listSections(wiki: Wiki): SectionSummary[] {
   const rows = wiki.db
     .prepare(
-      `SELECT DISTINCT n.section AS name, COALESCE(s.title, n.section) AS title, s.sort_order AS sort_order
-       FROM notes n LEFT JOIN note_sections s ON s.name = n.section
-       WHERE n.section IS NOT NULL ORDER BY title COLLATE NOCASE`,
+      `SELECT name, title, sort_order FROM note_sections
+       UNION
+       SELECT DISTINCT section, section, NULL FROM notes
+       WHERE section IS NOT NULL AND section NOT IN (SELECT name FROM note_sections)
+       ORDER BY title COLLATE NOCASE`,
     )
     .all() as { name: string; title: string; sort_order: number | null }[];
   return rows.map((r) => ({
@@ -382,8 +389,68 @@ export function deleteNote(wiki: Wiki, slug: unknown): boolean {
   wiki.db.transaction(() => {
     wiki.db.prepare('DELETE FROM notes WHERE id = ?').run(row.id);
     fs.rmSync(filePath(wiki, row.slug, row.section), { force: true });
+    if (row.section !== null) forgetEmptySection(wiki, row.section);
   })();
   return true;
+}
+
+/** A section left without pages stays only if it has its own `_section.md` (as after a restart). */
+function forgetEmptySection(wiki: Wiki, section: string): void {
+  const used = wiki.db.prepare('SELECT 1 FROM notes WHERE section = ?').get(section);
+  if (used !== undefined || hasSectionFile(wiki, section)) return;
+  wiki.db.prepare('DELETE FROM note_sections WHERE name = ?').run(section);
+}
+
+function hasSectionFile(wiki: Wiki, section: string): boolean {
+  return isInsideWiki(wiki, path.join(sectionDir(wiki, section), SECTION_FILE));
+}
+
+/** True if a section, or any entry of `wiki/`, already has this name (ignoring case). */
+function sectionTaken(wiki: Wiki, name: string): boolean {
+  const key = name.normalize('NFC').toLowerCase();
+  const indexed = wiki.db
+    .prepare(
+      `SELECT name FROM note_sections UNION SELECT DISTINCT section FROM notes WHERE section IS NOT NULL`,
+    )
+    .all() as { name: string }[];
+  const onDisk = fs.existsSync(wiki.dir) ? fs.readdirSync(wiki.dir) : [];
+  return [...indexed.map((r) => r.name), ...onDisk].some(
+    (n) => n.normalize('NFC').toLowerCase() === key,
+  );
+}
+
+/**
+ * Creates a section from the sidebar: a folder directly under `wiki/` with its `_section.md`
+ * (title = the name given). Folder, file and index change together: on any failure the folder
+ * is removed again, so nothing is left half made (RNF-08).
+ */
+export function createSection(wiki: Wiki, input: unknown, now: Date = new Date()): SectionResult {
+  const checked = validateSectionInput(input);
+  if (!checked.ok) return checked;
+  const name = checked.title;
+  const stamp = now.toISOString();
+  let created: string | null = null;
+
+  try {
+    const dir = sectionDir(wiki, name);
+    wiki.db.transaction(() => {
+      if (sectionTaken(wiki, name)) throw new WikiError('duplicate');
+      wiki.db
+        .prepare('INSERT INTO note_sections (name, title, sort_order) VALUES (?, ?, NULL)')
+        .run(name, name);
+      fs.mkdirSync(wiki.dir, { recursive: true });
+      fs.mkdirSync(dir);
+      created = dir;
+      if (!isInsideWiki(wiki, dir)) throw new WikiError('invalid');
+      writeFileAtomic(path.join(dir, SECTION_FILE), serializeNote(name, stamp, stamp, ''));
+    })();
+  } catch (error) {
+    if (created !== null) fs.rmSync(created, { recursive: true, force: true });
+    if (error instanceof WikiError)
+      return { ok: false, error: error.code === 'duplicate' ? 'duplicate' : 'invalid' };
+    return { ok: false, error: 'io' };
+  }
+  return { ok: true, section: { name, title: name } };
 }
 
 /** Deletes temp files left in `wiki/` by a crash in the middle of a save. */
@@ -440,12 +507,14 @@ export function rebuildIndex(wiki: Wiki): number {
     const dir = sectionDir(wiki, name);
     removeOrphanTempFiles(dir);
     const files = pageFiles(dir, name);
-    if (files.length === 0) continue; // an empty folder is not a section
+    const sectionFile = path.join(dir, SECTION_FILE);
+    const hasFile = isInsideWiki(wiki, sectionFile);
+    // An empty folder is not a section, unless it has its _section.md (created from the sidebar).
+    if (files.length === 0 && !hasFile) continue;
     found.push(...files);
     let meta: ParsedNote | null = null;
     try {
-      const file = path.join(dir, SECTION_FILE);
-      if (isInsideWiki(wiki, file)) meta = parseNote(fs.readFileSync(file, 'utf8'));
+      if (hasFile) meta = parseNote(fs.readFileSync(sectionFile, 'utf8'));
     } catch {
       // a section without a readable _section.md is titled with its folder name
     }

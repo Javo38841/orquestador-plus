@@ -10,6 +10,7 @@ import { buildExport } from '../export/export';
 import { readZip } from '../export/zip';
 import {
   createNote,
+  createSection,
   deleteNote,
   getNote,
   listNotes,
@@ -171,6 +172,75 @@ describe('wiki sections', () => {
     expect(listSections(wiki)).toEqual([{ name: 'Guías', title: 'Guías prácticas', order: 1 }]);
   });
 
+  describe('creating sections', () => {
+    it('CP-08-67: creates the folder with its _section.md and lists it while it has no pages', () => {
+      const now = new Date('2026-10-22T10:00:00.000Z');
+      expect(createSection(wiki, { title: ' Guías ' }, now)).toEqual({
+        ok: true,
+        section: { name: 'Guías', title: 'Guías' },
+      });
+
+      const file = path.join(wiki.dir, 'Guías', '_section.md');
+      expect(parseNote(fs.readFileSync(file, 'utf8')).title).toBe('Guías');
+      expect(listSections(wiki)).toEqual([{ name: 'Guías', title: 'Guías' }]);
+      expect(listNotes(wiki)).toEqual([]);
+
+      // Restart: datos.db rebuilt from the folders keeps the empty section.
+      rebuildIndex(wiki);
+      expect(listSections(wiki)).toEqual([{ name: 'Guías', title: 'Guías' }]);
+    });
+
+    it('CP-08-67: a page created in the new section is listed under it, once', () => {
+      createSection(wiki, { title: 'Guías' });
+      expect(
+        createNote(wiki, { title: 'Instalación', content: '', section: 'Guías' }),
+      ).toMatchObject({ ok: true, note: { section: 'Guías' } });
+      expect(listSections(wiki)).toEqual([{ name: 'Guías', title: 'Guías' }]);
+      expect(tree()).toEqual(['Guías', 'Guías/Instalación.md', 'Guías/_section.md']);
+    });
+
+    it('CP-08-68: empty, unsafe or repeated names create nothing', () => {
+      write('Decisiones/adr.md', 'ADR');
+      fs.mkdirSync(path.join(wiki.dir, 'Suelta'));
+      rebuildIndex(wiki);
+      createSection(wiki, { title: 'Guías' });
+      const before = tree();
+
+      for (const title of ['', '   ', 'a/b', '..', '../fuera', 'a\\b']) {
+        expect(createSection(wiki, { title }), title).toMatchObject({ ok: false });
+      }
+      for (const title of ['Guías', 'guías', 'DECISIONES', 'Suelta']) {
+        expect(createSection(wiki, { title }), title).toEqual({ ok: false, error: 'duplicate' });
+      }
+      expect(tree()).toEqual(before);
+      expect(fs.existsSync(path.join(root, 'fuera'))).toBe(false);
+    });
+
+    it('CP-08-69: if writing _section.md fails, no half-made folder is left', () => {
+      const spy = vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {
+        throw new Error('disk full');
+      });
+      try {
+        expect(createSection(wiki, { title: 'Guías' })).toEqual({ ok: false, error: 'io' });
+      } finally {
+        spy.mockRestore();
+      }
+      expect(fs.existsSync(path.join(wiki.dir, 'Guías'))).toBe(false);
+      expect(listSections(wiki)).toEqual([]);
+      expect(createSection(wiki, { title: 'Guías' })).toMatchObject({ ok: true });
+    });
+
+    it('deleting the last page keeps a section with _section.md and drops one without it', () => {
+      createSection(wiki, { title: 'Guías' });
+      createNote(wiki, { title: 'A', content: '', section: 'Guías' });
+      createNote(wiki, { title: 'B', content: '', section: 'Sueltas' });
+      rebuildIndex(wiki);
+      deleteNote(wiki, 'A');
+      deleteNote(wiki, 'B');
+      expect(listSections(wiki).map((s) => s.name)).toEqual(['Guías']);
+    });
+  });
+
   describe('IPC channels', () => {
     it('CP-08-25: an invalid section is rejected without touching the disk', () => {
       registerIpcHandlers(db, wiki.dir);
@@ -193,6 +263,20 @@ describe('wiki sections', () => {
       expect(list({}, 'Guías')).toHaveLength(1);
       expect(list({})).toHaveLength(1);
     });
+  });
+
+  it('CP-08-69: the IPC channel rejects invalid payloads without touching the disk', () => {
+    registerIpcHandlers(db, wiki.dir);
+    const create = handlers.get(IpcChannel.createSection)!;
+
+    for (const payload of [undefined, null, 'Guías', 7, {}, { title: 7 }, { title: '../x' }]) {
+      expect(create({}, payload)).toMatchObject({ ok: false });
+    }
+    expect(fs.existsSync(wiki.dir)).toBe(false);
+    expect(fs.existsSync(path.join(root, 'x'))).toBe(false);
+
+    expect(create({}, { title: 'Guías' })).toMatchObject({ ok: true });
+    expect(handlers.get(IpcChannel.listSections)!({})).toEqual([{ name: 'Guías', title: 'Guías' }]);
   });
 
   it('CP-08-23: the export keeps the section folders', () => {

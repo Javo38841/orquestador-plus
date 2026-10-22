@@ -3,10 +3,12 @@ import {
   buildWikiTree,
   noteKey,
   validateNoteInput,
+  validateSectionInput,
   type Note,
   type NoteError,
   type NoteInput,
   type NoteSummary,
+  type SectionError,
   type SectionSummary,
 } from '../../../../shared/wiki';
 import { DESKTOP_API } from '../../core/desktop-api';
@@ -58,12 +60,16 @@ export class WikiStore {
     this.open.set(null);
   }
 
-  /** Validates locally, creates the note and opens it. Returns the error, if any. */
+  /** Validates locally, creates the note (in `section`, if given) and opens it. */
   async create(input: NoteInput): Promise<NoteError | null> {
     const checked = validateNoteInput(input);
     if (!checked.ok) return checked.error;
     if (!this.api) return null;
-    const result = await this.api.createNote({ title: checked.title, content: checked.content });
+    const result = await this.api.createNote({
+      title: checked.title,
+      content: checked.content,
+      ...(checked.section !== undefined && { section: checked.section }),
+    });
     if (!result.ok) return result.error;
     this.open.set(result.note);
     await this.load();
@@ -81,6 +87,19 @@ export class WikiStore {
     });
     if (!result.ok) return result.error;
     this.open.set(result.note);
+    await this.load();
+    return null;
+  }
+
+  /** Creates an empty section; a name already used by another one is rejected. */
+  async createSection(title: string): Promise<SectionError | null> {
+    const checked = validateSectionInput({ title });
+    if (!checked.ok) return checked.error;
+    const key = checked.title.toLowerCase();
+    if (this.tree().sections.some((s) => s.name.toLowerCase() === key)) return 'duplicate';
+    if (!this.api) return null;
+    const result = await this.api.createSection({ title: checked.title });
+    if (!result.ok) return result.error;
     await this.load();
     return null;
   }

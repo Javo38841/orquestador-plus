@@ -59,3 +59,52 @@ test('CP-08-11: Esc or picking another note asks before discarding unsaved chang
   await page.getByTestId('discard-yes').click();
   await expect(page.getByTestId('note-view-title')).toHaveText('A');
 });
+
+test('CP-08-59: the top bar has logo and name left, centred search with Ctrl K and exit right', async () => {
+  const { page } = launched;
+  const bar = page.getByTestId('wiki-topbar');
+  await expect(bar.getByTestId('wiki-logo')).toBeVisible();
+  await expect(bar.getByTestId('wiki-name')).toHaveText('Wiki de OrquestadorPlus');
+  await expect(bar.getByTestId('wiki-search-label')).toHaveText('Buscar en la wiki');
+  await expect(bar.getByTestId('wiki-search-shortcut')).toHaveText('Ctrl K');
+  await expect(bar.getByTestId('wiki-exit-label')).toHaveText('Salir de la wiki');
+  await expect(bar.getByTestId('wiki-exit-shortcut')).toHaveText('Esc');
+
+  const [barBox, brand, search, exit] = await Promise.all(
+    [
+      bar,
+      bar.getByTestId('wiki-brand'),
+      bar.getByTestId('wiki-search'),
+      bar.getByTestId('wiki-exit'),
+    ].map(async (l) => (await l.boundingBox())!),
+  );
+  expect(brand.x).toBeLessThan(search.x);
+  expect(exit.x).toBeGreaterThan(search.x + search.width);
+  const searchCentre = search.x + search.width / 2;
+  const barCentre = barBox.x + barBox.width / 2;
+  expect(Math.abs(searchCentre - barCentre)).toBeLessThan(barBox.width * 0.05);
+});
+
+test('CP-08-72: a section and a page created from the sidebar survive a restart', async () => {
+  const { page, app, dataDir } = launched;
+  await page.getByTestId('new-section').click();
+  await page.getByTestId('new-section-name').fill('Guías');
+  await page.getByTestId('new-section-save').click();
+  const section = page.getByTestId('wiki-section').filter({ hasText: 'Guías' });
+  await expect(section.getByTestId('wiki-section-toggle')).toContainText('Guías');
+
+  await section.getByTestId('wiki-add-page').click();
+  await section.getByTestId('new-page-title').fill('Instalación');
+  await section.getByTestId('new-page-title').press('Enter');
+  await expect(page.getByTestId('note-view-title')).toHaveText('Instalación');
+  const selected = section.locator('[data-testid="note-item"][aria-current="page"]');
+  await expect(selected).toHaveText('Instalación');
+  await expect(selected).toHaveClass(/bg-accent/);
+
+  await app.close();
+  launched = await launchApp(dataDir);
+  await launched.page.getByRole('link', { name: 'Wiki' }).click();
+  const reopened = launched.page.getByTestId('wiki-section').filter({ hasText: 'Guías' });
+  await expect(reopened.getByTestId('wiki-section-toggle')).toContainText('Guías');
+  await expect(reopened.getByTestId('note-item')).toHaveText('Instalación');
+});
