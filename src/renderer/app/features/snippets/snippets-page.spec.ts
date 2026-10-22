@@ -1,7 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 import type { OrquestadorApi } from '../../../../shared/ipc';
-import type { Snippet, SnippetInput, SnippetResult } from '../../../../shared/snippets';
+import type {
+  Snippet,
+  SnippetInput,
+  SnippetResult,
+  SnippetsView,
+} from '../../../../shared/snippets';
 import { DESKTOP_API } from '../../core/desktop-api';
 import { TRANSLATIONS } from '../../i18n/transloco-loader';
 import { COPIED_FEEDBACK_MS, SnippetsPage } from './snippets-page';
@@ -17,7 +22,7 @@ const snippet = (id: number, extra: Partial<Snippet> = {}): Snippet => ({
   ...extra,
 });
 
-async function render(stored: Snippet[] = []) {
+async function render(stored: Snippet[] = [], view: SnippetsView = 'grid') {
   const api = {
     listSnippets: vi.fn(async () => stored),
     createSnippet: vi.fn(async (input: SnippetInput): Promise<SnippetResult> => ({
@@ -30,6 +35,8 @@ async function render(stored: Snippet[] = []) {
     })),
     deleteSnippet: vi.fn(async () => true),
     copyToClipboard: vi.fn(async () => true),
+    getSnippetsView: vi.fn(async () => view),
+    setSnippetsView: vi.fn(async (v: SnippetsView) => v),
   };
   await TestBed.configureTestingModule({
     imports: [
@@ -50,6 +57,7 @@ async function render(stored: Snippet[] = []) {
     fixture.detectChanges();
   };
   await settle();
+  await settle(); // the saved view arrives after the list
   const q = (testId: string) => el.querySelector(`[data-testid="${testId}"]`) as HTMLElement | null;
   const click = async (testId: string, index = 0) => {
     (el.querySelectorAll(`[data-testid="${testId}"]`)[index] as HTMLElement).click();
@@ -83,7 +91,7 @@ describe('SnippetsPage', () => {
       snippet(1),
     ]);
     expect(titles()).toEqual(['snippet 2', 'snippet 1']);
-    expect(q('snippet-type-chip')?.textContent?.trim()).toBe('Comando');
+    expect(q('snippet-type-badge')?.textContent?.trim()).toBe('Comando');
     expect(q('snippet-card-content')?.textContent).toBe('ls -la');
   });
 
@@ -180,5 +188,119 @@ describe('SnippetsPage', () => {
     expect(titles()).toEqual(['snippet 1']);
     await type('filter-tag', '', 'change');
     expect(titles()).toHaveLength(2);
+  });
+
+  const six = () => [
+    snippet(1, { title: 'Usuarios', tags: ['db'] }),
+    snippet(2, { title: 'Pedidos', tags: ['db'] }),
+    snippet(3, { title: 'Logs', type: 'command', content: 'tail -f app.log', tags: ['ops'] }),
+    snippet(4, { title: 'Docker', type: 'command', content: 'docker ps' }),
+    snippet(5, { title: 'Conexión', content: 'SELECT version()' }),
+    snippet(6, { title: 'Otro' }),
+  ];
+
+  it('CP-13-11: opens in the grid with a switch showing the active view', async () => {
+    const { q } = await render([snippet(1)]);
+    expect(q('snippet-list')?.dataset['view']).toBe('grid');
+    expect(q('view-grid')?.getAttribute('aria-pressed')).toBe('true');
+    expect(q('view-list')?.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('CP-13-12: grid cards have two columns with title, badge, code, copy and tags', async () => {
+    const { q } = await render([snippet(1, { tags: ['db'] }), snippet(2)]);
+    expect(q('snippet-list')?.className).toContain('grid-cols-2');
+    const card = q('snippet-card')!;
+    expect(card.querySelector('[data-testid="snippet-card-title"]')).not.toBeNull();
+    expect(card.querySelector('[data-testid="snippet-type-badge"]')).not.toBeNull();
+    expect(card.querySelector('[data-testid="snippet-card-content"]')).not.toBeNull();
+    expect(card.querySelector('[data-testid="snippet-copy"]')).not.toBeNull();
+    expect(card.querySelector('[data-testid="tag-chip"]')?.textContent).toContain('#db');
+  });
+
+  it('CP-13-13: SQL is blue and Comando violet, in the grid and the list', async () => {
+    const { q, click, el } = await render([snippet(1), snippet(2, { type: 'command' })]);
+    const classes = () =>
+      [...el.querySelectorAll('[data-testid="snippet-type-badge"]')].map((b) => b.className);
+    const [sql, command] = classes();
+    expect(sql).not.toBe(command);
+    await click('view-list');
+    expect(classes()).toEqual([sql, command]);
+    expect(q('snippet-list')).not.toBeNull();
+  });
+
+  it('CP-13-14: the list is one column with the same data and actions', async () => {
+    const { q, click } = await render([snippet(1), snippet(2)]);
+    await click('view-list');
+    expect(q('snippet-list')?.dataset['view']).toBe('list');
+    expect(q('snippet-list')?.className).not.toContain('grid-cols-2');
+    for (const id of ['snippet-card-title', 'snippet-copy', 'snippet-edit', 'snippet-delete']) {
+      expect(q(id)).not.toBeNull();
+    }
+  });
+
+  it('CP-13-15: switching the view saves it, and a reopened page restores it', async () => {
+    const { api, click } = await render([snippet(1)]);
+    await click('view-list');
+    expect(api.setSnippetsView).toHaveBeenCalledWith('list');
+    TestBed.resetTestingModule();
+    const again = await render([snippet(1)], 'list');
+    expect(again.q('snippet-list')?.dataset['view']).toBe('list');
+  });
+
+  it('CP-13-17: Copy in the grid sends the exact content, confirms and uses the accent color', async () => {
+    const { api, q, click } = await render([snippet(1, { content: ' a\n\tb ' })]);
+    expect(q('snippet-copy')?.className).toContain('bg-accent');
+    await click('snippet-copy');
+    expect(api.copyToClipboard).toHaveBeenCalledWith(' a\n\tb ');
+    expect(q('snippet-copied')).not.toBeNull();
+  });
+
+  it('CP-13-18: the search box has its hint and filters by title, content or tag', async () => {
+    const { q, type, titles } = await render(six());
+    expect(q('snippet-search')?.getAttribute('placeholder')).toBe(
+      'Buscar por título, texto o etiqueta',
+    );
+    await type('snippet-search', 'CONEXION');
+    expect(titles()).toEqual(['Conexión']);
+    await type('snippet-search', 'docker ps');
+    expect(titles()).toEqual(['Docker']);
+    await type('snippet-search', 'OPS');
+    expect(titles()).toEqual(['Logs']);
+  });
+
+  it('CP-13-19: no matches shows the empty filter message; blank text lists all', async () => {
+    const { el, type, titles } = await render(six());
+    await type('snippet-search', 'zzz');
+    expect(titles()).toEqual([]);
+    expect(el.textContent).toContain('No hay snippets en este filtro');
+    await type('snippet-search', '   ');
+    expect(titles()).toHaveLength(6);
+  });
+
+  it('CP-13-20: the type filters show their counts over all the snippets', async () => {
+    const { q } = await render(six());
+    const text = (id: string) => q(id)?.textContent?.replace(/\s+/g, ' ').trim();
+    expect(text('filter-all')).toBe('Todos · 6');
+    expect(text('filter-sql')).toBe('SQL · 4');
+    expect(text('filter-command')).toBe('Comandos · 2');
+  });
+
+  it('CP-13-21: type, tag and text combine and the counts ignore the search text', async () => {
+    const { q, click, type, titles } = await render(six());
+    await click('filter-sql');
+    await type('filter-tag', 'db', 'change');
+    await type('snippet-search', 'pedi');
+    expect(titles()).toEqual(['Pedidos']);
+    expect(q('filter-all')?.textContent).toContain('Todos · 6');
+    expect(q('filter-sql')?.textContent).toContain('SQL · 4');
+    await click('filter-command');
+    expect(titles()).toEqual([]);
+  });
+
+  it('CP-13-22: the counts follow a deletion', async () => {
+    const { q, click } = await render(six());
+    await click('snippet-delete');
+    await click('snippet-delete-confirm');
+    expect(q('filter-all')?.textContent).toContain('Todos · 5');
   });
 });

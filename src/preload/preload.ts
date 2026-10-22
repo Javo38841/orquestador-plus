@@ -53,6 +53,8 @@ const api: OrquestadorApi = {
   setBoardProject: (projectId) => ipcRenderer.invoke(IpcChannel.setBoardProject, projectId),
   getBoardPanelOpen: () => ipcRenderer.invoke(IpcChannel.getBoardPanelOpen),
   setBoardPanelOpen: (open) => ipcRenderer.invoke(IpcChannel.setBoardPanelOpen, open),
+  getSnippetsView: () => ipcRenderer.invoke(IpcChannel.getSnippetsView),
+  setSnippetsView: (view) => ipcRenderer.invoke(IpcChannel.setSnippetsView, view),
   exportAll: () => ipcRenderer.invoke(IpcChannel.exportAll),
 };
 

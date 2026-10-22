@@ -36,9 +36,11 @@ import type { ReminderScheduler } from '../reminders/scheduler';
 import {
   getBoardPanelOpen,
   getBoardProject,
+  getSnippetsView,
   getRemindersEnabled,
   setBoardPanelOpen,
   setBoardProject,
+  setSnippetsView,
   setRemindersEnabled,
 } from '../settings/settings';
 import {
@@ -209,6 +211,10 @@ export function registerIpcHandlers(
   ipcMain.handle(IpcChannel.getBoardPanelOpen, () => withDb(getBoardPanelOpen));
   ipcMain.handle(IpcChannel.setBoardPanelOpen, (_event, open: unknown) =>
     withDb((d) => setBoardPanelOpen(d, open)),
+  );
+  ipcMain.handle(IpcChannel.getSnippetsView, () => withDb(getSnippetsView));
+  ipcMain.handle(IpcChannel.setSnippetsView, (_event, view: unknown) =>
+    withDb((d) => setSnippetsView(d, view)),
   );
   ipcMain.handle(IpcChannel.getRemindersEnabled, () => withDb(getRemindersEnabled));
   ipcMain.handle(IpcChannel.setRemindersEnabled, (_event, enabled: unknown) =>

@@ -2,12 +2,15 @@ import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular
 import { TranslocoPipe } from '@jsverse/transloco';
 import {
   filterSnippets,
+  SNIPPETS_VIEWS,
   SNIPPET_TYPES,
   type SnippetError,
   type SnippetInput,
   type SnippetType,
   type SnippetTypeFilter,
 } from '../../../../shared/snippets';
+import { SnippetTypeBadge } from '../../shared/ui/snippet-type-badge';
+import { TagChip } from '../../shared/ui/tag-chip';
 import { TagsEditor } from '../tags/tags-editor';
 import { SnippetsStore } from './snippets.store';
 
@@ -33,7 +36,7 @@ const emptyDraft = (): SnippetInput => ({ title: '', type: 'sql', content: '', t
 /** Snippets y comandos (RF-13): cards with a copy button, filters and a create/edit form. */
 @Component({
   selector: 'app-snippets-page',
-  imports: [TranslocoPipe, TagsEditor],
+  imports: [TranslocoPipe, TagsEditor, SnippetTypeBadge, TagChip],
   template: `
     <header class="mb-6 flex items-start justify-between gap-4">
       <div>
@@ -137,6 +140,15 @@ const emptyDraft = (): SnippetInput => ({ title: '', type: 'sql', content: '', t
       }
     } @else {
       <div class="mb-3 flex flex-wrap items-center gap-2 text-sm">
+        <input
+          type="search"
+          class="min-w-64 flex-1 rounded-md border border-line bg-canvas px-3 py-1.5 text-ink outline-none focus:border-accent"
+          data-testid="snippet-search"
+          [placeholder]="'snippets.searchPlaceholder' | transloco"
+          [attr.aria-label]="'snippets.searchPlaceholder' | transloco"
+          [value]="search()"
+          (input)="search.set($any($event.target).value)"
+        />
         <div class="flex gap-2" role="tablist">
           @for (f of typeFilters; track f) {
             <button
@@ -148,7 +160,7 @@ const emptyDraft = (): SnippetInput => ({ title: '', type: 'sql', content: '', t
               [attr.data-testid]="'filter-' + f"
               (click)="typeFilter.set(f)"
             >
-              {{ 'snippets.filters.' + f | transloco }}
+              {{ 'snippets.filters.' + f | transloco }} · {{ store.counts()[f] }}
             </button>
           }
         </div>
@@ -169,6 +181,24 @@ const emptyDraft = (): SnippetInput => ({ title: '', type: 'sql', content: '', t
             </select>
           </label>
         }
+        <div
+          class="ml-auto flex gap-1"
+          role="group"
+          [attr.aria-label]="'snippets.view.label' | transloco"
+        >
+          @for (v of views; track v) {
+            <button
+              type="button"
+              class="rounded-md border px-3 py-1"
+              [class]="store.view() === v ? 'border-accent text-accent' : 'border-line text-muted'"
+              [attr.aria-pressed]="store.view() === v"
+              [attr.data-testid]="'view-' + v"
+              (click)="store.setView(v)"
+            >
+              {{ 'snippets.view.' + v | transloco }}
+            </button>
+          }
+        </div>
       </div>
 
       @if (visible().length === 0) {
@@ -176,83 +206,83 @@ const emptyDraft = (): SnippetInput => ({ title: '', type: 'sql', content: '', t
           {{ 'snippets.emptyFilter' | transloco }}
         </p>
       } @else {
-        <ul class="space-y-3" data-testid="snippet-list">
+        <ul
+          [class]="store.view() === 'grid' ? 'grid grid-cols-2 gap-3' : 'space-y-2'"
+          [attr.data-view]="store.view()"
+          data-testid="snippet-list"
+        >
           @for (s of visible(); track s.id) {
             <li
-              class="rounded-lg border border-line bg-surface p-4 text-sm"
+              class="flex min-w-0 flex-col rounded-lg border border-line bg-surface text-sm"
+              [class]="store.view() === 'grid' ? 'p-4' : 'px-3 py-2'"
               data-testid="snippet-card"
             >
-              <div class="flex flex-wrap items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <h2 class="truncate font-semibold" data-testid="snippet-card-title">
-                    {{ s.title }}
-                  </h2>
-                  <p class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                    <span
-                      class="rounded-full border border-line px-2"
-                      data-testid="snippet-type-chip"
-                      >{{ 'snippets.types.' + s.type | transloco }}</span
-                    >
-                    @for (t of s.tags; track t) {
-                      <span data-testid="snippet-tag">#{{ t }}</span>
-                    }
-                  </p>
-                </div>
-                <div class="flex items-center gap-2">
-                  @if (copiedId() === s.id) {
-                    <span class="text-xs text-accent" role="status" data-testid="snippet-copied">{{
-                      'snippets.copied' | transloco
-                    }}</span>
-                  }
+              <div class="flex items-center justify-between gap-3">
+                <h2 class="min-w-0 truncate font-semibold" data-testid="snippet-card-title">
+                  {{ s.title }}
+                </h2>
+                <app-snippet-type-badge [type]="s.type" />
+              </div>
+              <pre
+                class="overflow-auto rounded-md bg-canvas p-2 font-mono text-xs"
+                [class]="store.view() === 'grid' ? 'mt-3 max-h-40' : 'mt-2 max-h-16'"
+                data-testid="snippet-card-content"
+                >{{ s.content }}</pre>
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  class="rounded-md bg-accent px-3 py-1 font-semibold text-accent-ink"
+                  data-testid="snippet-copy"
+                  (click)="copy(s.id)"
+                >
+                  {{ 'snippets.copy' | transloco }}
+                </button>
+                @if (copiedId() === s.id) {
+                  <span class="text-xs text-accent" role="status" data-testid="snippet-copied">{{
+                    'snippets.copied' | transloco
+                  }}</span>
+                }
+                <button
+                  type="button"
+                  class="rounded-md border border-line px-3 py-1"
+                  data-testid="snippet-edit"
+                  (click)="startEdit(s.id)"
+                >
+                  {{ 'snippets.edit' | transloco }}
+                </button>
+                @if (confirmingId() === s.id) {
                   <button
                     type="button"
-                    class="rounded-md bg-accent px-3 py-1 font-semibold text-accent-ink"
-                    data-testid="snippet-copy"
-                    (click)="copy(s.id)"
+                    class="rounded-md border border-warn px-3 py-1 text-warn"
+                    data-testid="snippet-delete-confirm"
+                    (click)="remove(s.id)"
                   >
-                    {{ 'snippets.copy' | transloco }}
+                    {{ 'snippets.confirmYes' | transloco }}
                   </button>
                   <button
                     type="button"
                     class="rounded-md border border-line px-3 py-1"
-                    data-testid="snippet-edit"
-                    (click)="startEdit(s.id)"
+                    data-testid="snippet-delete-cancel"
+                    (click)="confirmingId.set(null)"
                   >
-                    {{ 'snippets.edit' | transloco }}
+                    {{ 'snippets.confirmNo' | transloco }}
                   </button>
-                  @if (confirmingId() === s.id) {
-                    <button
-                      type="button"
-                      class="rounded-md border border-warn px-3 py-1 text-warn"
-                      data-testid="snippet-delete-confirm"
-                      (click)="remove(s.id)"
-                    >
-                      {{ 'snippets.confirmYes' | transloco }}
-                    </button>
-                    <button
-                      type="button"
-                      class="rounded-md border border-line px-3 py-1"
-                      data-testid="snippet-delete-cancel"
-                      (click)="confirmingId.set(null)"
-                    >
-                      {{ 'snippets.confirmNo' | transloco }}
-                    </button>
-                  } @else {
-                    <button
-                      type="button"
-                      class="rounded-md border border-line px-3 py-1"
-                      data-testid="snippet-delete"
-                      (click)="confirmingId.set(s.id)"
-                    >
-                      {{ 'snippets.delete' | transloco }}
-                    </button>
+                } @else {
+                  <button
+                    type="button"
+                    class="rounded-md border border-line px-3 py-1"
+                    data-testid="snippet-delete"
+                    (click)="confirmingId.set(s.id)"
+                  >
+                    {{ 'snippets.delete' | transloco }}
+                  </button>
+                }
+                <span class="ml-auto flex flex-wrap justify-end gap-1">
+                  @for (t of s.tags; track t) {
+                    <app-tag-chip [tag]="t" />
                   }
-                </div>
+                </span>
               </div>
-              <pre
-                class="mt-3 overflow-x-auto rounded-md bg-canvas p-3 font-mono text-xs"
-                data-testid="snippet-card-content"
-                >{{ s.content }}</pre>
             </li>
           }
         </ul>
@@ -263,7 +293,9 @@ const emptyDraft = (): SnippetInput => ({ title: '', type: 'sql', content: '', t
 export class SnippetsPage implements OnInit, OnDestroy {
   protected readonly store = inject(SnippetsStore);
   protected readonly types: readonly SnippetType[] = SNIPPET_TYPES;
+  protected readonly views = SNIPPETS_VIEWS;
   protected readonly typeFilters = TYPE_FILTERS;
+  protected readonly search = signal('');
   protected readonly typeFilter = signal<SnippetTypeFilter>('all');
   protected readonly tagFilter = signal<string | null>(null);
   protected readonly draft = signal<SnippetInput | null>(null);
@@ -274,7 +306,7 @@ export class SnippetsPage implements OnInit, OnDestroy {
   private copiedTimer: ReturnType<typeof setTimeout> | undefined;
 
   protected readonly visible = computed(() =>
-    filterSnippets(this.store.snippets(), this.typeFilter(), this.tagFilter()),
+    filterSnippets(this.store.snippets(), this.typeFilter(), this.tagFilter(), this.search()),
   );
 
   ngOnInit(): void {
@@ -333,6 +365,7 @@ export class SnippetsPage implements OnInit, OnDestroy {
     // Make sure the saved snippet is not hidden by the current filters.
     this.typeFilter.set('all');
     this.tagFilter.set(null);
+    this.search.set('');
     this.stopEditing();
   }
 

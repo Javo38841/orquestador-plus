@@ -409,6 +409,13 @@
       "command": "Comandos"
     },
     "filterTag": "Etiqueta",
+    "allTags": "Todas las etiquetas",
+    "searchPlaceholder": "Buscar por título, texto o etiqueta",
+    "view": {
+      "label": "Vista",
+      "grid": "Grilla",
+      "list": "Lista"
+    },
     "types": {
       "sql": "SQL",
       "command": "Comando"

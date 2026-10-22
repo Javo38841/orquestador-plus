@@ -1,6 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import type { OrquestadorApi } from '../../../../shared/ipc';
-import type { Snippet, SnippetInput, SnippetResult } from '../../../../shared/snippets';
+import type {
+  Snippet,
+  SnippetInput,
+  SnippetResult,
+  SnippetsView,
+} from '../../../../shared/snippets';
 import { DESKTOP_API } from '../../core/desktop-api';
 import { SnippetsStore } from './snippets.store';
 
@@ -17,6 +22,8 @@ const snippet = (id: number, extra: Partial<Snippet> = {}): Snippet => ({
 
 const input: SnippetInput = { title: 'Nuevo', type: 'command', content: 'ls', tags: [] };
 
+const saved = { view: 'grid' as SnippetsView };
+
 function setup(stored: Snippet[] = []) {
   const api = {
     listSnippets: vi.fn(async () => stored),
@@ -27,6 +34,11 @@ function setup(stored: Snippet[] = []) {
     })),
     deleteSnippet: vi.fn(async () => true),
     copyToClipboard: vi.fn(async () => true),
+    getSnippetsView: vi.fn(async (): Promise<SnippetsView> => saved.view),
+    setSnippetsView: vi.fn(async (view: SnippetsView) => {
+      saved.view = view;
+      return view;
+    }),
   };
   TestBed.configureTestingModule({
     providers: [{ provide: DESKTOP_API, useValue: api as unknown as OrquestadorApi }],
@@ -35,6 +47,37 @@ function setup(stored: Snippet[] = []) {
 }
 
 describe('SnippetsStore', () => {
+  beforeEach(() => {
+    saved.view = 'grid';
+  });
+
+  it('CP-13-01: the view is the grid when nothing was saved', async () => {
+    const { store } = setup([snippet(1)]);
+    await store.load();
+    expect(store.view()).toBe('grid');
+  });
+
+  it('CP-13-15: the chosen view is saved and a new store restores it', async () => {
+    const first = setup([snippet(1)]);
+    await first.store.load();
+    await first.store.setView('list');
+    expect(first.api.setSnippetsView).toHaveBeenCalledWith('list');
+    TestBed.resetTestingModule();
+    const second = setup([snippet(1)]);
+    await second.store.load();
+    expect(second.store.view()).toBe('list');
+  });
+
+  it('CP-13-20: counts all and per type, and CP-13-22: they follow create, update and delete', async () => {
+    const { store } = setup([snippet(1), snippet(2, { type: 'command' })]);
+    await store.load();
+    expect(store.counts()).toEqual({ all: 2, sql: 1, command: 1 });
+    await store.create(input);
+    expect(store.counts()).toEqual({ all: 3, sql: 2, command: 1 });
+    await store.remove(1);
+    expect(store.counts()).toEqual({ all: 2, sql: 1, command: 1 });
+  });
+
   it('CP-13-01: create saves through the API and puts the snippet first', async () => {
     const { api, store } = setup([snippet(1)]);
     await store.load();

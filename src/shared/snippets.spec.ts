@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  countSnippetsByType,
   filterSnippets,
+  isSnippetsView,
   snippetTags,
   validateSnippetInput,
   SNIPPET_TITLE_MAX_LENGTH,
@@ -57,5 +59,38 @@ describe('filterSnippets', () => {
 
   it('lists the distinct tags alphabetically', () => {
     expect(snippetTags(all)).toEqual(['db', 'ops']);
+  });
+});
+
+describe('searching snippets', () => {
+  const all: Snippet[] = [
+    { ...snippet(1, 'sql', ['db']), title: 'Conexión lenta', content: 'SELECT 1' },
+    { ...snippet(2, 'command', ['Docker']), title: 'Limpiar', content: 'docker prune' },
+  ];
+
+  it('CP-13-18: matches title, content or tag, ignoring case and accents', () => {
+    expect(filterSnippets(all, 'all', null, 'CONEXION').map((s) => s.id)).toEqual([1]);
+    expect(filterSnippets(all, 'all', null, 'select').map((s) => s.id)).toEqual([1]);
+    expect(filterSnippets(all, 'all', null, 'DOCKER').map((s) => s.id)).toEqual([2]);
+    expect(filterSnippets(all, 'all', null, 'zzz')).toEqual([]);
+  });
+
+  it('CP-13-19: blank text lists everything', () => {
+    expect(filterSnippets(all, 'all', null, '   ')).toHaveLength(2);
+  });
+
+  it('CP-13-21: type, tag and text combine', () => {
+    expect(filterSnippets(all, 'sql', 'db', 'conexion')).toHaveLength(1);
+    expect(filterSnippets(all, 'command', 'db', 'conexion')).toHaveLength(0);
+  });
+
+  it('CP-13-20: counts snippets per type', () => {
+    const six = [1, 2, 3, 4].map((i) => snippet(i, i % 2 ? 'sql' : 'command'));
+    expect(countSnippetsByType(six)).toEqual({ all: 4, sql: 2, command: 2 });
+  });
+
+  it('CP-13-16: only grid and list are views', () => {
+    expect(isSnippetsView('grid') && isSnippetsView('list')).toBe(true);
+    expect(isSnippetsView('table')).toBe(false);
   });
 });

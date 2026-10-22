@@ -1,6 +1,6 @@
 import type { Bug, BugInput, BugResult, BugStatus } from './bugs';
 import type { Topic, TopicInput, TopicResult, TopicStatus } from './learning';
-import type { Snippet, SnippetInput, SnippetResult } from './snippets';
+import type { Snippet, SnippetInput, SnippetResult, SnippetsView } from './snippets';
 import type { JournalEntry, JournalResult } from './journal';
 import type { CaptureResult, InboxItem } from './inbox';
 import type { PortalLinkInput, PortalLinkResult, PortalLink, PortalStatus } from './portal';
@@ -67,6 +67,8 @@ export const IpcChannel = {
   setBoardProject: 'settings:set-board-project',
   getBoardPanelOpen: 'settings:get-board-panel-open',
   setBoardPanelOpen: 'settings:set-board-panel-open',
+  getSnippetsView: 'settings:get-snippets-view',
+  setSnippetsView: 'settings:set-snippets-view',
   exportAll: 'export:all',
 } as const;
 
@@ -158,6 +160,9 @@ export interface OrquestadorApi {
   /** Whether the Tablero's side panel of projects is open; open unless folded (CP-04-23). */
   getBoardPanelOpen(): Promise<boolean>;
   setBoardPanelOpen(open: boolean): Promise<boolean>;
+  /** How Snippets lays out its cards; a grid unless the user chose the list (CP-13-15). */
+  getSnippetsView(): Promise<SnippetsView>;
+  setSnippetsView(view: SnippetsView): Promise<SnippetsView>;
   /**
    * Exports everything as a ZIP of open formats (RF-11). Main opens the save dialog; the
    * renderer sends nothing and only gets the outcome.

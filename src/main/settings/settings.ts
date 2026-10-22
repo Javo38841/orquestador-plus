@@ -1,9 +1,11 @@
 import type Database from 'better-sqlite3';
+import { isSnippetsView, type SnippetsView } from '../../shared/snippets';
 import { isBoardSelection, parseBoardSelection, type BoardSelection } from '../../shared/board';
 
 const REMINDERS_ENABLED = 'reminders.enabled';
 const BOARD_PROJECT = 'board.project';
 const BOARD_PANEL_OPEN = 'board.panelOpen';
+const SNIPPETS_VIEW = 'snippets.view';
 
 /** Task reminders notify unless the user turned them off (RF-18). */
 export function getRemindersEnabled(db: Database.Database): boolean {
@@ -56,4 +58,20 @@ export function setBoardPanelOpen(db: Database.Database, open: unknown): boolean
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
   ).run(BOARD_PANEL_OPEN, open ? '1' : '0');
   return open;
+}
+
+/** Snippets show as a grid unless the user chose the list; a corrupt setting is the grid. */
+export function getSnippetsView(db: Database.Database): SnippetsView {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(SNIPPETS_VIEW) as
+    { value: string } | undefined;
+  return isSnippetsView(row?.value) ? row.value : 'grid';
+}
+
+/** Remembers the Snippets layout; anything but 'grid' or 'list' is rejected. Returns the stored value. */
+export function setSnippetsView(db: Database.Database, view: unknown): SnippetsView {
+  if (!isSnippetsView(view)) throw new Error('Invalid snippets view');
+  db.prepare(
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
+  ).run(SNIPPETS_VIEW, view);
+  return view;
 }
