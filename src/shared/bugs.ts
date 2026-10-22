@@ -68,6 +68,14 @@ export function countOpenBugs(bugs: Bug[]): number {
   return bugs.filter(isOpenBug).length;
 }
 
+/** Whole local calendar days between the bug's creation and `now` (never negative). */
+export function bugAgeDays(createdAt: string, now: Date = new Date()): number {
+  const created = new Date(createdAt);
+  const start = Date.UTC(created.getFullYear(), created.getMonth(), created.getDate());
+  const end = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.max(0, Math.round((end - start) / 86_400_000));
+}
+
 export type ValidBugInput = BugInput;
 
 /** Trims and checks a bug form. Everything but the title may be empty; severity defaults to medium. */

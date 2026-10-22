@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { countOpenBugs, filterBugs, validateBugInput, type Bug, type BugStatus } from './bugs';
+import {
+  bugAgeDays,
+  countOpenBugs,
+  filterBugs,
+  validateBugInput,
+  type Bug,
+  type BugStatus,
+} from './bugs';
 
 const bug = (id: number, status: BugStatus): Bug => ({
   id,
@@ -48,5 +55,13 @@ describe('bugs', () => {
       ok: false,
       error: 'invalid',
     });
+  });
+
+  it('CP-09-22: age counts local calendar days from creation', () => {
+    const now = new Date(2026, 9, 22, 15, 0);
+    expect(bugAgeDays(new Date(2026, 9, 22, 1, 0).toISOString(), now)).toBe(0);
+    expect(bugAgeDays(new Date(2026, 9, 21, 23, 0).toISOString(), now)).toBe(1);
+    expect(bugAgeDays(new Date(2026, 9, 19, 9, 0).toISOString(), now)).toBe(3);
+    expect(bugAgeDays(new Date(2026, 9, 25, 9, 0).toISOString(), now)).toBe(0);
   });
 });
