@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { openDatabase } from '../db/database';
 import {
   createNote,
@@ -278,5 +278,59 @@ describe('wiki', () => {
   it('a link from a note to itself is not its own backlink', () => {
     create('A', '[[A]]');
     expect(note('A').backlinks).toEqual([]);
+  });
+
+  it('CP-N08-02: a failed note write leaves no row or link behind', () => {
+    // A directory squatting on the temp path makes the file write fail after the index writes.
+    fs.mkdirSync(wiki.dir, { recursive: true });
+    fs.mkdirSync(path.join(wiki.dir, '.Nota.md.tmp'));
+
+    const result = create('Nota', 'ver [[Otra]]');
+
+    expect(result).toEqual({ ok: false, error: 'io' });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM notes').get()).toEqual({ n: 0 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM note_links').get()).toEqual({ n: 0 });
+  });
+
+  it('CP-N08-03: saving goes through a temp file and leaves none behind', () => {
+    create('Nota', 'uno');
+    updateNote(wiki, 'Nota', { title: 'Nota', content: 'dos' });
+
+    expect(fs.readdirSync(wiki.dir)).toEqual(['Nota.md']);
+    expect(note('Nota').content).toBe('dos');
+  });
+
+  it('CP-N08-03: the content is written to the temp path and then renamed', () => {
+    const rename = vi.spyOn(fs, 'renameSync');
+    create('Nota', 'uno');
+
+    const [from, to] = rename.mock.calls[0] as [string, string];
+    expect(path.dirname(from)).toBe(path.dirname(to));
+    expect(to).toBe(path.join(wiki.dir, 'Nota.md'));
+    expect(from).not.toBe(to);
+    rename.mockRestore();
+  });
+
+  it('CP-N08-04: a failed temp write keeps the original content and reports the error', () => {
+    create('Nota', 'original');
+    fs.mkdirSync(path.join(wiki.dir, '.Nota.md.tmp'));
+
+    const result = updateNote(wiki, 'Nota', { title: 'Nota', content: 'nuevo' });
+
+    expect(result).toEqual({ ok: false, error: 'io' });
+    expect(parseNote(fs.readFileSync(path.join(wiki.dir, 'Nota.md'), 'utf8')).content).toBe(
+      'original',
+    );
+    expect(note('Nota').content).toBe('original');
+  });
+
+  it('CP-N08-05: orphan temp files are not listed as notes and are removed at startup', () => {
+    create('A');
+    fs.writeFileSync(path.join(wiki.dir, '.B.md.tmp'), 'parcial');
+
+    expect(rebuildIndex(wiki)).toBe(1);
+
+    expect(listNotes(wiki).map((n) => n.slug)).toEqual(['A']);
+    expect(fs.readdirSync(wiki.dir)).toEqual(['A.md']);
   });
 });
