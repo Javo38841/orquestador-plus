@@ -33,6 +33,8 @@ export class FocusTimerService {
   readonly remainingMs = signal(FOCUS_DURATION_MS);
   /** Set when a start was refused because no task was chosen. */
   readonly needsTask = signal(false);
+  /** Sessions that ran to the end since the app opened; drives "SESIÓN n DE 4". */
+  readonly completedSessions = signal(0);
   readonly clock = computed(() => formatClock(this.remainingMs()));
 
   constructor() {
@@ -96,6 +98,7 @@ export class FocusTimerService {
       this.stopTicking();
       this.remainingMs.set(0);
       this.state.set('finished');
+      this.completedSessions.update((n) => n + 1);
     } else {
       this.remainingMs.set(left);
     }

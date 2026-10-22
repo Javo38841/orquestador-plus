@@ -16,6 +16,13 @@ export function todayGroups(tasks: Task[], now: Date = new Date()): TodayGroups 
   };
 }
 
+/** Unfinished tasks due tomorrow (local day). */
+export function tomorrowTasks(tasks: Task[], now: Date = new Date()): Task[] {
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const tomorrow = localDate(next);
+  return tasks.filter((t) => t.status !== 'done' && t.dueDate === tomorrow);
+}
+
 export type DueLabel =
   { kind: 'today' } | { kind: 'yesterday' } | { kind: 'daysAgo'; days: number };
 

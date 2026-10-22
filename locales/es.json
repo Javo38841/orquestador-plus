@@ -98,6 +98,8 @@
   },
   "focus": {
     "title": "Enfoque",
+    "session": "SESIÓN {{n}} DE 4",
+    "progress": "Progreso de la sesión",
     "clockLabel": "Tiempo restante",
     "task": "Tarea en la que te enfocas",
     "chooseTask": "Elige una tarea",
@@ -125,7 +127,24 @@
     "overdueOne": "1 atrasada",
     "dueToday": "Hoy",
     "dueYesterday": "Ayer",
-    "dueDaysAgo": "Hace {{days}} días"
+    "dueDaysAgo": "Hace {{days}} días",
+    "newTask": "Nueva tarea",
+    "capture": {
+      "label": "Captura rápida",
+      "placeholder": "Anota una tarea, idea o bug y presiona Enter…",
+      "shortcut": "Ctrl + Espacio"
+    },
+    "overdueTitle": "ATRASADAS · {{count}}",
+    "forTodayTitle": "PARA HOY · {{count}}",
+    "tomorrow": {
+      "title": "Mañana",
+      "empty": "Nada programado para mañana."
+    },
+    "portal": {
+      "title": "Entrantes del portal",
+      "pending": "{{count}} reportes esperan revisión",
+      "pendingOne": "1 reporte espera revisión"
+    }
   },
   "board": {
     "select": "Tablero",

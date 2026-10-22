@@ -481,6 +481,8 @@ export class TasksPage implements OnInit {
     const sub = this.route?.queryParamMap.subscribe((params) => {
       const id = Number(params.get('task'));
       void loaded.then(() => this.reveal(Number.isInteger(id) && id > 0 ? id : null));
+      // Arriving from "+ Nueva tarea" in Hoy opens the create form.
+      if (params.get('new') === '1') this.openForm(null);
     });
     this.destroyRef.onDestroy(() => sub?.unsubscribe());
   }
