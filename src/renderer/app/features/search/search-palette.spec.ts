@@ -29,7 +29,7 @@ describe('SearchPalette', () => {
     vi.useRealTimers();
   });
 
-  async function render() {
+  async function renderFixture() {
     await TestBed.configureTestingModule({
       imports: [
         SearchPalette,
@@ -45,9 +45,14 @@ describe('SearchPalette', () => {
       ],
     }).compileComponents();
     const fixture = TestBed.createComponent(SearchPalette);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  async function render() {
+    const fixture = await renderFixture();
     const closed = vi.fn();
     fixture.componentInstance.closed.subscribe(closed);
-    fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
     const input = el.querySelector<HTMLInputElement>('[data-testid="search-input"]')!;
 
@@ -166,5 +171,36 @@ describe('SearchPalette', () => {
 
     expect(navigate).not.toHaveBeenCalled();
     expect(closed).not.toHaveBeenCalled();
+  });
+
+  it('CP-N10-06: 100 create and destroy cycles with a pending search leave no timers behind', async () => {
+    const live = new Set<unknown>();
+    const realSet = globalThis.setTimeout;
+    const realClear = globalThis.clearTimeout;
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+      ...args: Parameters<typeof setTimeout>
+    ) => {
+      const handle = realSet(...args);
+      if (args[1] === SEARCH_DEBOUNCE_MS) live.add(handle);
+      return handle;
+    }) as typeof setTimeout);
+    vi.spyOn(globalThis, 'clearTimeout').mockImplementation(((handle: never) => {
+      live.delete(handle);
+      realClear(handle);
+    }) as typeof clearTimeout);
+    for (let i = 0; i < 100; i++) {
+      TestBed.resetTestingModule();
+      const fixture = await renderFixture();
+      const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+        '[data-testid="search-input"]',
+      )!;
+      input.value = 'inf';
+      input.dispatchEvent(new Event('input'));
+      fixture.destroy();
+    }
+    expect(live.size).toBe(0);
+    vi.restoreAllMocks();
+    await vi.runAllTimersAsync();
+    expect(search).not.toHaveBeenCalled();
   });
 });
