@@ -508,5 +508,13 @@
     "done": "Exportación guardada en:",
     "cancelled": "Exportación cancelada: no se guardó ningún archivo.",
     "failed": "No se pudo guardar la exportación. No quedó ningún archivo incompleto."
+  },
+  "ui": {
+    "loose": "Suelta",
+    "date": {
+      "today": "Hoy",
+      "overdueYesterday": "Venció ayer",
+      "overdueDaysAgo": "Venció hace {{days}} días"
+    }
   }
 }

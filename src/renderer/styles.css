@@ -11,8 +11,18 @@
   --color-accent: #3fc9a6;
   --color-accent-ink: #0f1218;
   --color-warn: #e0a33a;
+  --color-danger: #e5645c;
   --color-project: #3b6fd1;
   --color-repeat: #8b6bd9;
+  /* Tinted chip/badge backgrounds and their readable text colors (>= 4.5:1, RNF-17) */
+  --color-project-soft: #1b2944;
+  --color-project-ink: #8fb0f2;
+  --color-repeat-soft: #2a2347;
+  --color-repeat-ink: #b9a4f2;
+  --color-warn-soft: #382c12;
+  --color-danger-soft: #3d1c1c;
+  --color-danger-ink: #f19a94;
+  --color-accent-soft: #143229;
   --color-callout-note: #3b6fd1;
   --color-callout-tip: #3fc9a6;
   --color-callout-caution: #e0a33a;
@@ -29,4 +39,29 @@ body {
   color: var(--color-ink);
   font-family: 'Inter', 'Noto Sans', 'Segoe UI', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Dark scrollbars everywhere, also in the packaged app on Fedora (RNF-17) */
+:root {
+  color-scheme: dark;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) var(--color-canvas);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background: var(--color-canvas);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--color-canvas);
 }
