@@ -68,6 +68,8 @@ function fakeApi(overrides: Partial<AppInfo> = {}, bugs: Bug[] = []): Orquestado
     getBoardProject: async () => 'general' as const,
     getBoardPanelOpen: async () => true,
     setBoardPanelOpen: async (open: boolean) => open,
+    getSnippetsView: async () => 'grid' as const,
+    setSnippetsView: async (view: 'grid' | 'list') => view,
     setBoardProject: async (selection: 'general' | 'loose' | { projectId: number }) => selection,
     getRemindersEnabled: async () => true,
     setRemindersEnabled: async (enabled: boolean) => enabled,

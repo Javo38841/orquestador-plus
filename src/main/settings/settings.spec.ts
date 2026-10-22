@@ -8,9 +8,11 @@ import {
   getBoardPanelOpen,
   getBoardProject,
   getRemindersEnabled,
+  getSnippetsView,
   setBoardPanelOpen,
   setBoardProject,
   setRemindersEnabled,
+  setSnippetsView,
 } from './settings';
 
 describe('settings', () => {
@@ -96,5 +98,23 @@ describe('settings', () => {
     expect(getBoardPanelOpen(db)).toBe(true);
     expect(() => setBoardPanelOpen(db, 'no')).toThrow();
     expect(getBoardPanelOpen(db)).toBe(true);
+  });
+
+  it('CP-13-15: the Snippets view is stored and read back', () => {
+    expect(setSnippetsView(db, 'list')).toBe('list');
+    expect(getSnippetsView(db)).toBe('list');
+    expect(setSnippetsView(db, 'grid')).toBe('grid');
+    expect(getSnippetsView(db)).toBe('grid');
+  });
+
+  it('CP-13-16: a view that is not grid or list is rejected and not stored; the default is the grid', () => {
+    expect(getSnippetsView(db)).toBe('grid');
+    setSnippetsView(db, 'list');
+    for (const bad of ['table', '', null, undefined, 1, { view: 'list' }]) {
+      expect(() => setSnippetsView(db, bad)).toThrow();
+    }
+    expect(getSnippetsView(db)).toBe('list');
+    db.prepare('UPDATE settings SET value = ? WHERE key = ?').run('table', 'snippets.view');
+    expect(getSnippetsView(db)).toBe('grid');
   });
 });

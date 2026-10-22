@@ -47,15 +47,45 @@ export function isSnippetType(value: unknown): value is SnippetType {
   return typeof value === 'string' && (SNIPPET_TYPES as readonly string[]).includes(value);
 }
 
-/** Snippets of the chosen type (or all) that carry the tag (or any tag when `tag` is null). */
+export const SNIPPETS_VIEWS = ['grid', 'list'] as const;
+export type SnippetsView = (typeof SNIPPETS_VIEWS)[number];
+
+export function isSnippetsView(value: unknown): value is SnippetsView {
+  return typeof value === 'string' && (SNIPPETS_VIEWS as readonly string[]).includes(value);
+}
+
+/** Lowercase and accent-free, so "Conexión" matches "conexion". */
+function fold(text: string): string {
+  return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+}
+
+/**
+ * Snippets of the chosen type (or all) that carry the tag (or any tag when `tag` is null) and
+ * whose title, content or a tag contains `text` (ignoring case and accents; blank matches all).
+ */
 export function filterSnippets(
   snippets: Snippet[],
   type: SnippetTypeFilter,
   tag: string | null,
+  text = '',
 ): Snippet[] {
+  const needle = fold(text.trim());
   return snippets.filter(
-    (s) => (type === 'all' || s.type === type) && (tag === null || s.tags.includes(tag)),
+    (s) =>
+      (type === 'all' || s.type === type) &&
+      (tag === null || s.tags.includes(tag)) &&
+      (needle === '' ||
+        fold(s.title).includes(needle) ||
+        fold(s.content).includes(needle) ||
+        s.tags.some((t) => fold(t).includes(needle))),
   );
+}
+
+/** How many snippets each type filter would list, over all of them. */
+export function countSnippetsByType(snippets: Snippet[]): Record<SnippetTypeFilter, number> {
+  const counts: Record<SnippetTypeFilter, number> = { all: snippets.length, sql: 0, command: 0 };
+  for (const s of snippets) counts[s.type] += 1;
+  return counts;
 }
 
 /** Distinct tags across the snippets, alphabetical. */

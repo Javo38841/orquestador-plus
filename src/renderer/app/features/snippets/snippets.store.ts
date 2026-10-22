@@ -1,10 +1,12 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import {
+  countSnippetsByType,
   snippetTags,
   validateSnippetInput,
   type Snippet,
   type SnippetError,
   type SnippetInput,
+  type SnippetsView,
 } from '../../../../shared/snippets';
 import { DESKTOP_API } from '../../core/desktop-api';
 
@@ -17,9 +19,25 @@ export class SnippetsStore {
   /** Tags used by at least one snippet, for the filter and the suggestions. */
   readonly tags = computed(() => snippetTags(this.list()));
 
+  /** How many snippets each type filter lists, over all of them (CP-13-20). */
+  readonly counts = computed(() => countSnippetsByType(this.list()));
+
+  private readonly layout = signal<SnippetsView>('grid');
+  /** Grid or list; restored from the saved preference by `load` (CP-13-15). */
+  readonly view = this.layout.asReadonly();
+
   async load(): Promise<void> {
     if (!this.api) return;
-    this.list.set(await this.api.listSnippets());
+    const listing = this.api.listSnippets();
+    const saved = this.api.getSnippetsView();
+    this.list.set(await listing);
+    this.layout.set(await saved);
+  }
+
+  /** Switches the layout at once and saves it. */
+  async setView(view: SnippetsView): Promise<void> {
+    this.layout.set(view);
+    await this.api?.setSnippetsView(view);
   }
 
   /** Validates locally, saves through the API and puts the new snippet first. */
