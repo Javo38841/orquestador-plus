@@ -62,3 +62,29 @@ export function buildBoard(tasks: Task[], filter: BoardFilter, now: Date = new D
   }
   return board;
 }
+
+/** Tag chips shown before the "más…" button (CP-07-09). */
+export const VISIBLE_TAGS = 8;
+
+/**
+ * Splits the tags into the most used ones, always visible, and the rest. A chosen tag that
+ * is not among the most used still shows, so the active filter never hides.
+ */
+export function splitTags(
+  tasks: Pick<Task, 'tags'>[],
+  tags: string[],
+  selected: string | null,
+  limit: number = VISIBLE_TAGS,
+): { shown: string[]; rest: string[] } {
+  const uses = new Map<string, number>();
+  for (const task of tasks) for (const tag of task.tags) uses.set(tag, (uses.get(tag) ?? 0) + 1);
+  const ranked = [...tags].sort(
+    (a, b) => (uses.get(b) ?? 0) - (uses.get(a) ?? 0) || a.localeCompare(b),
+  );
+  if (ranked.length <= limit) return { shown: ranked, rest: [] };
+  const shown = ranked.slice(0, limit);
+  if (selected !== null && ranked.includes(selected) && !shown.includes(selected)) {
+    shown[limit - 1] = selected;
+  }
+  return { shown, rest: ranked.filter((t) => !shown.includes(t)) };
+}

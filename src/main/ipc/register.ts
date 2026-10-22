@@ -34,8 +34,10 @@ import type { PortalServer } from '../portal/server';
 import { search } from '../search/search';
 import type { ReminderScheduler } from '../reminders/scheduler';
 import {
+  getBoardPanelOpen,
   getBoardProject,
   getRemindersEnabled,
+  setBoardPanelOpen,
   setBoardProject,
   setRemindersEnabled,
 } from '../settings/settings';
@@ -203,6 +205,10 @@ export function registerIpcHandlers(
   ipcMain.handle(IpcChannel.getBoardProject, () => withDb(getBoardProject));
   ipcMain.handle(IpcChannel.setBoardProject, (_event, id: unknown) =>
     withDb((d) => setBoardProject(d, id)),
+  );
+  ipcMain.handle(IpcChannel.getBoardPanelOpen, () => withDb(getBoardPanelOpen));
+  ipcMain.handle(IpcChannel.setBoardPanelOpen, (_event, open: unknown) =>
+    withDb((d) => setBoardPanelOpen(d, open)),
   );
   ipcMain.handle(IpcChannel.getRemindersEnabled, () => withDb(getRemindersEnabled));
   ipcMain.handle(IpcChannel.setRemindersEnabled, (_event, enabled: unknown) =>

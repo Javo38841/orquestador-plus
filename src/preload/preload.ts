@@ -51,6 +51,8 @@ const api: OrquestadorApi = {
   setRemindersEnabled: (enabled) => ipcRenderer.invoke(IpcChannel.setRemindersEnabled, enabled),
   getBoardProject: () => ipcRenderer.invoke(IpcChannel.getBoardProject),
   setBoardProject: (projectId) => ipcRenderer.invoke(IpcChannel.setBoardProject, projectId),
+  getBoardPanelOpen: () => ipcRenderer.invoke(IpcChannel.getBoardPanelOpen),
+  setBoardPanelOpen: (open) => ipcRenderer.invoke(IpcChannel.setBoardPanelOpen, open),
   exportAll: () => ipcRenderer.invoke(IpcChannel.exportAll),
 };
 

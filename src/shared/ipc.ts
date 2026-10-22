@@ -65,6 +65,8 @@ export const IpcChannel = {
   setRemindersEnabled: 'settings:set-reminders-enabled',
   getBoardProject: 'settings:get-board-project',
   setBoardProject: 'settings:set-board-project',
+  getBoardPanelOpen: 'settings:get-board-panel-open',
+  setBoardPanelOpen: 'settings:set-board-panel-open',
   exportAll: 'export:all',
 } as const;
 
@@ -153,6 +155,9 @@ export interface OrquestadorApi {
   /** Project the Tablero last showed; null is "General" (CP-04-12). */
   getBoardProject(): Promise<BoardSelection>;
   setBoardProject(selection: BoardSelection): Promise<BoardSelection>;
+  /** Whether the Tablero's side panel of projects is open; open unless folded (CP-04-23). */
+  getBoardPanelOpen(): Promise<boolean>;
+  setBoardPanelOpen(open: boolean): Promise<boolean>;
   /**
    * Exports everything as a ZIP of open formats (RF-11). Main opens the save dialog; the
    * renderer sends nothing and only gets the outcome.

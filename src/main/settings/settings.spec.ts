@@ -5,8 +5,10 @@ import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDatabase } from '../db/database';
 import {
+  getBoardPanelOpen,
   getBoardProject,
   getRemindersEnabled,
+  setBoardPanelOpen,
   setBoardProject,
   setRemindersEnabled,
 } from './settings';
@@ -84,5 +86,15 @@ describe('settings', () => {
       ).run('board.project', value);
       expect(getBoardProject(db)).toBe('general');
     }
+  });
+
+  it('CP-04-24: the projects panel is open by default, remembers being folded and rejects non-booleans', () => {
+    expect(getBoardPanelOpen(db)).toBe(true);
+    expect(setBoardPanelOpen(db, false)).toBe(false);
+    expect(getBoardPanelOpen(db)).toBe(false);
+    setBoardPanelOpen(db, true);
+    expect(getBoardPanelOpen(db)).toBe(true);
+    expect(() => setBoardPanelOpen(db, 'no')).toThrow();
+    expect(getBoardPanelOpen(db)).toBe(true);
   });
 });

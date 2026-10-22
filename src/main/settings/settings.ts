@@ -3,6 +3,7 @@ import { isBoardSelection, parseBoardSelection, type BoardSelection } from '../.
 
 const REMINDERS_ENABLED = 'reminders.enabled';
 const BOARD_PROJECT = 'board.project';
+const BOARD_PANEL_OPEN = 'board.panelOpen';
 
 /** Task reminders notify unless the user turned them off (RF-18). */
 export function getRemindersEnabled(db: Database.Database): boolean {
@@ -39,4 +40,20 @@ export function setBoardProject(db: Database.Database, selection: unknown): Boar
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
   ).run(BOARD_PROJECT, value);
   return selection;
+}
+
+/** The Tablero's projects panel is open unless the user folded it. */
+export function getBoardPanelOpen(db: Database.Database): boolean {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(BOARD_PANEL_OPEN) as
+    { value: string } | undefined;
+  return row?.value !== '0';
+}
+
+/** Remembers whether the projects panel is open; anything but a boolean is rejected. */
+export function setBoardPanelOpen(db: Database.Database, open: unknown): boolean {
+  if (typeof open !== 'boolean') throw new Error('Invalid board panel setting');
+  db.prepare(
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
+  ).run(BOARD_PANEL_OPEN, open ? '1' : '0');
+  return open;
 }
