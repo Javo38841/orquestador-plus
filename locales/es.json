@@ -157,11 +157,25 @@
     "columns": {
       "task": "Tarea",
       "project": "Proyecto",
+      "repeat": "Repetición",
       "due": "Vence"
     },
     "loose": "Suelta",
     "filterByTag": "Filtrar por etiqueta",
-    "allTags": "Todas",
+    "filters": {
+      "project": "Proyecto",
+      "allProjects": "Todos los proyectos",
+      "loose": "Sueltas",
+      "repeat": "Repetición",
+      "allRepeats": "Todas las repeticiones",
+      "tag": "Etiqueta",
+      "allTags": "Todas las etiquetas"
+    },
+    "count": {
+      "one": "{{count}} tarea",
+      "other": "{{count}} tareas"
+    },
+    "emptyFiltered": "Ninguna tarea cumple los filtros.",
     "showCompleted": "Mostrar completadas",
     "form": {
       "title": "Título",
@@ -346,7 +360,6 @@
       "command": "Comandos"
     },
     "filterTag": "Etiqueta",
-    "allTags": "Todas",
     "types": {
       "sql": "SQL",
       "command": "Comando"
@@ -425,6 +438,7 @@
       "body": "Recordatorio de tarea · {{time}}",
       "late": "Recordatorio atrasado · era el {{date}} a las {{time}}"
     },
+    "title": "Recordatorios",
     "enabled": "Avisarme de los recordatorios de tareas"
   },
   "portal": {
@@ -514,7 +528,12 @@
     "date": {
       "today": "Hoy",
       "overdueYesterday": "Venció ayer",
-      "overdueDaysAgo": "Venció hace {{days}} días"
+      "overdueDaysAgo": "Venció hace {{days}} días",
+      "tomorrow": "Mañana",
+      "compact": {
+        "overdueYesterday": "Ayer",
+        "overdueDaysAgo": "Hace {{days}} días"
+      }
     }
   }
 }

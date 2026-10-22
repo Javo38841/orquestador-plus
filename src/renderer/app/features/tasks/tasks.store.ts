@@ -26,13 +26,25 @@ export class TasksStore {
   readonly tagFilter = signal<string | null>(null);
   /** Pending view by default; completed tasks come back when this is on. */
   readonly showCompleted = signal(false);
+  /** Project the "Tareas" tab is filtered by: an id, 'loose' for no project, or null for all. */
+  readonly projectFilter = signal<number | 'loose' | null>(null);
+  /** Repetition type the "Tareas" tab is filtered by (including 'once'), or null for all. */
+  readonly kindFilter = signal<RecurrenceKind | null>(null);
   readonly visible = computed(() => {
     const tag = this.tagFilter();
+    const project = this.projectFilter();
+    const kind = this.kindFilter();
     return this.taskList().filter(
       (t) =>
-        (this.showCompleted() || t.status !== 'done') && (tag === null || t.tags.includes(tag)),
+        (this.showCompleted() || t.status !== 'done') &&
+        (tag === null || t.tags.includes(tag)) &&
+        (project === null ||
+          (project === 'loose' ? t.projectId === null : t.projectId === project)) &&
+        (kind === null || t.recurrence.kind === kind),
     );
   });
+  /** Unfinished tasks, for the "Tareas" tab counter. */
+  readonly pendingCount = computed(() => this.taskList().filter((t) => t.status !== 'done').length);
 
   /** Project the "Series recurrentes" tab is filtered by, or null for all. */
   readonly seriesProjectFilter = signal<number | null>(null);
@@ -44,6 +56,7 @@ export class TasksStore {
       (t) => t.seriesId !== null && t.status !== 'done' && isSeriesRule(t.recurrence),
     ),
   );
+  readonly seriesCount = computed(() => this.series().length);
   readonly visibleSeries = computed(() => {
     const project = this.seriesProjectFilter();
     const kind = this.seriesKindFilter();
@@ -68,6 +81,10 @@ export class TasksStore {
     this.tagList.set(tags);
     // A filter on a tag nobody uses anymore would hide everything.
     if (this.tagFilter() !== null && !tags.includes(this.tagFilter()!)) this.tagFilter.set(null);
+    const project = this.projectFilter();
+    if (typeof project === 'number' && !projects.some((p) => p.id === project)) {
+      this.projectFilter.set(null);
+    }
   }
 
   /** Creates a project by name. Returns the new project, or the error. */

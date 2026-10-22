@@ -106,11 +106,11 @@ test('CP-07-04: filtering Tareas by #infra hides tasks without it until the filt
     await expect(page.getByTestId('task-row').filter({ hasText: title })).toBeVisible();
   }
 
-  await page.getByTestId('tag-filter-option').filter({ hasText: '#infra' }).click();
+  await page.getByTestId('filter-tag').selectOption('infra');
   await expect(page.getByTestId('task-row')).toHaveCount(1);
   await expect(page.getByTestId('task-row').filter({ hasText: 'Con etiqueta' })).toBeVisible();
 
-  await page.getByTestId('tag-filter-all').click();
+  await page.getByTestId('filter-tag').selectOption('');
   await expect(page.getByTestId('task-row')).toHaveCount(2);
 });
 
@@ -124,10 +124,38 @@ test('CP-06-01: a weekly Friday task shows its repetition chip and appears in Se
   await page.getByTestId('task-save').click();
 
   const row = page.getByTestId('task-row').filter({ hasText: 'Revisar backups' });
-  await expect(row.getByTestId('task-repeat-chip')).toHaveText('Semanal · viernes');
+  await expect(row.getByTestId('repeat-chip')).toContainText('Semanal · viernes');
 
   await page.getByTestId('tab-series').click();
   const series = page.getByTestId('series-row').filter({ hasText: 'Revisar backups' });
   await expect(series).toBeVisible();
   await expect(series.getByTestId('series-rule')).toHaveText('Semanal · viernes');
+});
+
+test("CP-05-21: a row's actions are reachable, open and usable with the keyboard only", async () => {
+  const { page } = launched;
+  await page.getByTestId('new-task').click();
+  await page.getByTestId('task-title').fill('Solo teclado');
+  await page.getByTestId('task-save').click();
+  const row = page.getByTestId('task-row').filter({ hasText: 'Solo teclado' });
+  await expect(row).toBeVisible();
+
+  await row.getByTestId('task-check').focus();
+  await page.keyboard.press('Tab');
+  await expect(row.getByTestId('task-today')).toBeFocused();
+  await expect(row.getByTestId('task-actions')).toHaveCSS('opacity', '1');
+  await page.keyboard.press('Enter');
+  await expect(row.getByTestId('task-today')).toHaveAttribute('aria-pressed', 'true');
+
+  await page.keyboard.press('Tab');
+  await expect(row.getByTestId('task-edit')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('task-form')).toBeVisible();
+  await page.getByRole('button', { name: 'Cancelar' }).click();
+
+  await row.getByTestId('task-delete').focus();
+  await page.keyboard.press('Enter');
+  await row.getByTestId('task-delete-confirm').focus();
+  await page.keyboard.press('Enter');
+  await expect(row).toHaveCount(0);
 });

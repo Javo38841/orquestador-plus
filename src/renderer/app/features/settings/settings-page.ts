@@ -1,5 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
+import { RemindersToggle } from '../reminders/reminders-toggle';
 import { ExportStore } from './export.store';
 
 const INCLUDED = ['tasks', 'projects', 'tags', 'inbox', 'wiki'];
@@ -7,12 +8,17 @@ const INCLUDED = ['tasks', 'projects', 'tags', 'inbox', 'wiki'];
 /** Ajustes / Exportar (RF-11): what is exported and the button that exports it. */
 @Component({
   selector: 'app-settings-page',
-  imports: [TranslocoPipe],
+  imports: [TranslocoPipe, RemindersToggle],
   template: `
     <header class="mb-6">
       <h1 class="text-2xl font-semibold">{{ 'nav.settings' | transloco }}</h1>
       <p class="mt-1 text-sm text-muted">{{ 'pages.settings' | transloco }}</p>
     </header>
+
+    <section class="mb-4 rounded-lg border border-line bg-surface p-4 text-sm">
+      <h2 class="mb-2 text-lg font-semibold">{{ 'reminders.title' | transloco }}</h2>
+      <app-reminders-toggle />
+    </section>
 
     <section class="rounded-lg border border-line bg-surface p-4 text-sm">
       <h2 class="mb-2 text-lg font-semibold">{{ 'export.title' | transloco }}</h2>

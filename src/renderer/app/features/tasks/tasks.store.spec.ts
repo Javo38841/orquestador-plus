@@ -204,4 +204,37 @@ describe('TasksStore', () => {
     expect(await store.createProject('  ')).toEqual({ error: 'empty' });
     expect(api.createProject).not.toHaveBeenCalled();
   });
+
+  it('CP-05-13: project (including loose) and repetition filters combine', async () => {
+    const stored = [
+      { ...task(1), projectId: 1, projectName: 'a' },
+      { ...task(2), projectId: 1, projectName: 'a', recurrence: { kind: 'daily' } as const },
+      task(3),
+    ];
+    const { store } = setup(stored);
+    await store.load();
+    store.projectFilter.set('loose');
+    expect(store.visible().map((t) => t.id)).toEqual([3]);
+    store.projectFilter.set(null);
+    store.kindFilter.set('daily');
+    expect(store.visible().map((t) => t.id)).toEqual([2]);
+    store.kindFilter.set('once');
+    expect(store.visible().map((t) => t.id)).toEqual([1, 3]);
+  });
+
+  it('CP-05-11: counts pending tasks and open series', async () => {
+    const { store } = setup([
+      task(1),
+      task(2, 'done'),
+      {
+        ...task(3),
+        seriesId: 1,
+        dueDate: '2999-01-04',
+        recurrence: { kind: 'daily' } as const,
+      },
+    ]);
+    await store.load();
+    expect(store.pendingCount()).toBe(2);
+    expect(store.seriesCount()).toBe(1);
+  });
 });

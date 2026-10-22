@@ -8,6 +8,12 @@ import { DESKTOP_API } from '../../core/desktop-api';
 import { TRANSLATIONS } from '../../i18n/transloco-loader';
 import { TasksPage } from './tasks-page';
 
+const NOW = new Date();
+const isoDay = (offset: number) => {
+  const d = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() + offset);
+  return localDate(d);
+};
+
 const task = (id: number, extra: Partial<Task> = {}): Task => ({
   id,
   title: `Tarea ${id}`,
@@ -100,13 +106,13 @@ describe('TasksPage', () => {
       task(2, { dueDate: '2999-01-01' }),
       task(3, { dueDate: localDate() }),
     ]);
-    const dates = [...el.querySelectorAll('[data-testid="task-due-date"]')];
+    const dates = [...el.querySelectorAll('[data-testid="relative-date"]')];
     expect(dates.map((d) => d.classList.contains('text-warn'))).toEqual([true, false, false]);
   });
 
   it('CP-02-01: a task without a project shows the "Suelta" chip, with one shows its name', async () => {
     const { el } = await render([task(1), task(2, { projectId: 1, projectName: 'api-gateway' })]);
-    const chips = [...el.querySelectorAll('[data-testid="task-project-chip"]')].map((c) =>
+    const chips = [...el.querySelectorAll('[data-testid="project-chip"]')].map((c) =>
       c.textContent?.trim(),
     );
     expect(chips).toEqual(['Suelta', 'api-gateway']);
@@ -203,6 +209,11 @@ describe('TasksPage', () => {
     expect(createTask).not.toHaveBeenCalled();
   });
 
+  const pick = (select: HTMLElement, value: string) => {
+    (select as HTMLSelectElement).value = value;
+    select.dispatchEvent(new Event('change'));
+  };
+
   const type = (input: HTMLInputElement, value: string) => {
     input.value = value;
     input.dispatchEvent(new Event('input'));
@@ -275,12 +286,11 @@ describe('TasksPage', () => {
     const rows = () => el.querySelectorAll('[data-testid="task-row"]').length;
     expect(rows()).toBe(3);
 
-    const options = [...el.querySelectorAll<HTMLElement>('[data-testid="tag-filter-option"]')];
-    options.find((b) => b.textContent?.trim() === '#infra')!.click();
+    pick(q('filter-tag')!, 'infra');
     await settle();
     expect(rows()).toBe(1);
 
-    q('tag-filter-all')!.click();
+    pick(q('filter-tag')!, '');
     await settle();
     expect(rows()).toBe(3);
   });
@@ -323,8 +333,8 @@ describe('TasksPage', () => {
       recurrence: { kind: 'weekly', weekday: 5 },
     });
     const { el, q, settle } = await render([weekly, task(2)]);
-    expect(el.querySelectorAll('[data-testid="task-repeat-chip"]')).toHaveLength(1);
-    expect(q('task-repeat-chip')!.textContent).toContain('Semanal · viernes');
+    expect(el.querySelectorAll('[data-testid="repeat-chip"]')).toHaveLength(1);
+    expect(q('repeat-chip')!.textContent).toContain('Semanal · viernes');
 
     q('tab-series')!.click();
     await settle();
@@ -445,5 +455,208 @@ describe('TasksPage', () => {
       c.textContent?.trim(),
     );
     expect(chips).toEqual(['Recordatorio 2026-03-10 09:00', 'Notificado · 2026-03-10 10:00']);
+  });
+
+  describe('Tareas screen as designed (RF-05)', () => {
+    const rowsText = (el: HTMLElement) =>
+      [...el.querySelectorAll('[data-testid="task-row"]')].map((r) => r.textContent);
+
+    it('CP-05-11: segmented tabs show the task and series counts and switch the list', async () => {
+      const tasks = Array.from({ length: 6 }, (_, i) => task(i + 1));
+      const series = Array.from({ length: 7 }, (_, i) =>
+        task(100 + i, {
+          seriesId: i + 1,
+          dueDate: '2999-01-04',
+          recurrence: { kind: 'daily' },
+          title: `Serie ${i}`,
+        }),
+      );
+      const { q, el, settle } = await render([...tasks, ...series]);
+      expect(q('tab-tasks')!.textContent!.replace(/\s+/g, ' ').trim()).toBe('Tareas · 13');
+      expect(q('tab-series')!.textContent!.replace(/\s+/g, ' ').trim()).toBe(
+        'Series recurrentes · 7',
+      );
+      expect(q('task-list')).not.toBeNull();
+
+      q('tab-series')!.click();
+      await settle();
+      expect(el.querySelectorAll('[data-testid="series-row"]')).toHaveLength(7);
+      expect(q('task-list')).toBeNull();
+    });
+
+    it('CP-05-12: two combos with default labels, no tag chip cloud and a "N tareas" count', async () => {
+      const { q, el } = await render([task(1), task(2)]);
+      const project = q<HTMLSelectElement>('filter-project')!;
+      const repeat = q<HTMLSelectElement>('filter-repeat')!;
+      expect(project.selectedOptions[0].textContent!.trim()).toBe('Todos los proyectos');
+      expect(repeat.selectedOptions[0].textContent!.trim()).toBe('Todas las repeticiones');
+      expect(el.querySelector('[data-testid="tag-filter-option"]')).toBeNull();
+      expect(el.querySelector('[data-testid="tag-filter"]')).toBeNull();
+      expect(q('task-count')!.textContent!.trim()).toBe('2 tareas');
+    });
+
+    it('CP-05-13: project and repetition filters combine, table and count follow', async () => {
+      const weekly = { kind: 'weekly', weekday: 7 } as const;
+      const { q, el, settle } = await render([
+        task(1, { projectId: 1, projectName: 'api-gateway' }),
+        task(2, {
+          projectId: 1,
+          projectName: 'api-gateway',
+          seriesId: 1,
+          dueDate: '2999-01-04',
+          recurrence: weekly,
+        }),
+        task(3),
+        task(4, { seriesId: 2, dueDate: '2999-01-04', recurrence: weekly }),
+      ]);
+      pick(q('filter-project')!, '1');
+      await settle();
+      expect(rowsText(el)).toHaveLength(2);
+      pick(q('filter-repeat')!, 'weekly');
+      await settle();
+      expect(rowsText(el)).toHaveLength(1);
+      expect(rowsText(el)[0]).toContain('Tarea 2');
+      expect(q('task-count')!.textContent!.trim()).toBe('1 tarea');
+
+      pick(q('filter-project')!, 'loose');
+      pick(q('filter-repeat')!, '');
+      await settle();
+      expect(rowsText(el)).toHaveLength(2);
+      expect(rowsText(el).join('')).toContain('Tarea 3');
+      expect(rowsText(el).join('')).toContain('Tarea 4');
+    });
+
+    it('CP-05-14: a filter without matches shows "0 tareas" and an empty state', async () => {
+      const { q, el, settle } = await render([task(1)]);
+      pick(q('filter-repeat')!, 'monthly');
+      await settle();
+      expect(q('task-count')!.textContent!.trim()).toBe('0 tareas');
+      expect(q('task-empty')).not.toBeNull();
+      expect(q('task-list')).toBeNull();
+      expect(el.textContent).toContain('Ninguna tarea cumple los filtros');
+    });
+
+    it('CP-05-15: the table has TAREA | PROYECTO | REPETICIÓN | VENCE and tags under the title', async () => {
+      const { q, el } = await render([task(1, { tags: ['infra', 'api'] })]);
+      const headers = [...q('task-list')!.firstElementChild!.children].map((c) =>
+        c.textContent!.trim(),
+      );
+      expect(headers).toEqual(['Tarea', 'Proyecto', 'Repetición', 'Vence', '']);
+      expect(el.querySelector('[data-testid="task-check"]')).not.toBeNull();
+      const tags = el.querySelector('[data-testid="task-tag"]')!.parentElement!;
+      expect(tags.textContent).toContain('#infra');
+      expect(tags.classList).toContain('text-muted');
+      expect(tags.classList).toContain('text-[11px]');
+    });
+
+    it('CP-05-16: a very long title stays on one line with the full text available', async () => {
+      const title = 'x'.repeat(300);
+      const { q } = await render([task(1, { title })]);
+      const text = q('task-title-text')!;
+      expect(text.classList).toContain('truncate');
+      expect(text.getAttribute('title')).toBe(title);
+      expect(text.textContent).toBe(title);
+    });
+
+    it('CP-05-17: a project task has the project chip and a loose one "Suelta"', async () => {
+      const { el } = await render([task(1, { projectId: 1, projectName: 'api-gateway' }), task(2)]);
+      const chips = [...el.querySelectorAll('[data-testid="project-chip"]')];
+      expect(chips.map((c) => c.textContent!.trim())).toEqual(['api-gateway', 'Suelta']);
+      expect(chips[0].className).toContain('text-project-ink');
+      expect(chips[1].className).toContain('text-muted');
+    });
+
+    it('CP-05-18: a one-off task says "Una vez" in gray, a weekly one the violet chip', async () => {
+      const { q, el } = await render([
+        task(1),
+        task(2, {
+          seriesId: 1,
+          dueDate: '2999-01-04',
+          recurrence: { kind: 'weekly', weekday: 7 },
+        }),
+      ]);
+      const cells = [...el.querySelectorAll('[data-testid="task-repeat"]')];
+      expect(cells[0].textContent!.trim()).toBe('Una vez');
+      expect(cells[0].querySelector('span')!.classList).toContain('text-muted');
+      expect(cells[1].textContent!.replace(/\s+/g, ' ').trim()).toBe('↻ Semanal · domingo');
+      expect(q('repeat-chip')!.className).toContain('text-repeat-ink');
+    });
+
+    it('CP-05-19: due dates read Ayer, Hace 2 días, Hoy, a dated day and a dash', async () => {
+      const { el } = await render([
+        task(1, { dueDate: isoDay(-1) }),
+        task(2, { dueDate: isoDay(-2) }),
+        task(3, { dueDate: isoDay(0) }),
+        task(4, { dueDate: isoDay(1) }),
+        task(5, { dueDate: '2999-10-23' }),
+        task(6),
+      ]);
+      const cells = [...el.querySelectorAll('[data-testid="task-due-date"]')];
+      const text = cells.map((c) => c.textContent!.trim());
+      expect(text.slice(0, 4)).toEqual(['Ayer', 'Hace 2 días', 'Hoy', 'Mañana']);
+      expect(text[4]).toBe('23 oct 2999');
+      expect(text[5]).toBe('–');
+      expect(cells[0].querySelector('[data-testid="relative-date"]')!.classList).toContain(
+        'text-warn',
+      );
+      expect(cells[1].querySelector('[data-testid="relative-date"]')!.classList).toContain(
+        'text-warn',
+      );
+    });
+
+    it('CP-05-20: row actions are hidden at rest, appear on hover or focus and still work', async () => {
+      const setTaskForToday = vi.fn(async (id: number, forToday: boolean): Promise<TaskResult> => ({
+        ok: true,
+        task: task(id, { forToday }),
+      }));
+      const { q, settle, deleteTask } = await render([task(1)], { setTaskForToday });
+      const actions = q('task-actions')!;
+      expect(actions.classList).toContain('opacity-0');
+      expect(actions.classList).toContain('group-hover:opacity-100');
+      expect(actions.classList).toContain('group-focus-within:opacity-100');
+      expect(q('task-row')!.classList).toContain('group');
+
+      q('task-today')!.click();
+      await settle();
+      expect(setTaskForToday).toHaveBeenCalledWith(1, true);
+      q('task-edit')!.click();
+      await settle();
+      expect(q('task-form')).not.toBeNull();
+      q('task-delete')!.click();
+      await settle();
+      expect(q('task-actions')!.classList).not.toContain('opacity-0');
+      q('task-delete-confirm')!.click();
+      await settle();
+      expect(deleteTask).toHaveBeenCalledWith(1);
+    });
+
+    it('CP-05-22: the reminders switch is no longer on Tareas', async () => {
+      const { el, q } = await render([task(1)]);
+      expect(q('reminders-enabled')).toBeNull();
+      expect(el.textContent).not.toContain('Avisarme de los recordatorios');
+    });
+
+    it('CP-05-23: completing a task after changing tab and filter updates the row and counts', async () => {
+      const setTaskStatus = vi.fn(
+        async (id: number, status: Task['status']): Promise<TaskResult> => ({
+          ok: true,
+          task: task(id, { status, completedAt: '2026-03-02T10:00:00.000Z' }),
+        }),
+      );
+      const { q, el, settle } = await render([task(1), task(2)], { setTaskStatus });
+      q('tab-series')!.click();
+      await settle();
+      q('tab-tasks')!.click();
+      await settle();
+      pick(q('filter-repeat')!, 'once');
+      await settle();
+
+      el.querySelector<HTMLInputElement>('[data-task-id="1"] [data-testid="task-check"]')!.click();
+      await settle();
+      expect(setTaskStatus).toHaveBeenCalledWith(1, 'done');
+      expect(rowsText(el)).toHaveLength(1);
+      expect(q('task-count')!.textContent!.trim()).toBe('1 tarea');
+      expect(q('tab-tasks')!.textContent!.replace(/\s+/g, ' ').trim()).toBe('Tareas · 1');
+    });
   });
 });
