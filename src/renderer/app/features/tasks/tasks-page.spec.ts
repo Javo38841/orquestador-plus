@@ -191,6 +191,11 @@ describe('TasksPage', () => {
     expect(q('task-form')).toBeNull();
   });
 
+  it('CP-03-10: arriving with ?new=1 opens the create form', async () => {
+    const { q } = await render([], {}, { new: '1' });
+    expect(q('task-form')).not.toBeNull();
+  });
+
   it('CP-02-02: choosing "new project" without a name is rejected', async () => {
     const { q, settle, createTask } = await render([]);
     q('new-task')!.click();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dueLabel, formatLongDate, todayGroups } from './today';
+import { dueLabel, formatLongDate, todayGroups, tomorrowTasks } from './today';
 import { localDate, type Task } from './tasks';
 
 // Tuesday 2026-10-20, midday local time.
@@ -83,5 +83,25 @@ describe('dueLabel', () => {
     expect(dueLabel('2026-10-20', NOW)).toEqual({ kind: 'today' });
     expect(dueLabel(null, NOW)).toBeNull();
     expect(dueLabel('2026-10-21', NOW)).toBeNull();
+  });
+});
+
+describe('tomorrowTasks', () => {
+  it('CP-03-17: lists unfinished tasks due tomorrow', () => {
+    const t = task(1, { dueDate: '2026-10-21' });
+    expect(tomorrowTasks([t], NOW)).toEqual([t]);
+  });
+
+  it('CP-03-18: skips completed tasks and the days around tomorrow, at the local day edge', () => {
+    const late = new Date(2026, 9, 20, 23, 59);
+    const early = new Date(2026, 9, 20, 0, 1);
+    const tasks = [
+      task(1, { dueDate: '2026-10-21', status: 'done' }),
+      task(2, { dueDate: '2026-10-20' }),
+      task(3, { dueDate: '2026-10-22' }),
+      task(4, { dueDate: '2026-10-21' }),
+    ];
+    expect(tomorrowTasks(tasks, late).map((t) => t.id)).toEqual([4]);
+    expect(tomorrowTasks(tasks, early).map((t) => t.id)).toEqual([4]);
   });
 });

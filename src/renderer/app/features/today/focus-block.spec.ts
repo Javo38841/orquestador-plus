@@ -104,4 +104,20 @@ describe('FocusBlock', () => {
     expect(q('focus-clock')!.textContent).toContain('00:00');
     expect(q('focus-finished')!.textContent).toContain('terminada');
   });
+
+  it('CP-03-16: the card shows the session, big clock, progress bar and Pausar/Reiniciar', async () => {
+    const { q, settle } = await render();
+    expect(q('focus-session')!.textContent).toContain('SESIÓN 1 DE 4');
+    expect(q('focus-progress')!.getAttribute('aria-valuenow')).toBe('0');
+    const select = q<HTMLSelectElement>('focus-task')!;
+    select.value = '1';
+    select.dispatchEvent(new Event('change'));
+    q('focus-start')!.click();
+    vi.advanceTimersByTime(5 * 60 * 1000);
+    settle();
+    expect(q('focus-progress')!.getAttribute('aria-valuenow')).toBe('20');
+    expect(q('focus-pause')!.textContent).toContain('Pausar');
+    expect(q('focus-pause')!.classList).toContain('bg-accent');
+    expect(q('focus-reset')!.textContent).toContain('Reiniciar');
+  });
 });
