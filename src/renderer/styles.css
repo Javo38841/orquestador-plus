@@ -13,6 +13,9 @@
   --color-warn: #e0a33a;
   --color-project: #3b6fd1;
   --color-repeat: #8b6bd9;
+  --color-callout-note: #3b6fd1;
+  --color-callout-tip: #3fc9a6;
+  --color-callout-caution: #e0a33a;
 }
 
 html,

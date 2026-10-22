@@ -147,7 +147,11 @@ interface Draft {
                   class="mt-1 h-80 overflow-auto rounded-md border border-line bg-surface px-3 py-2"
                   data-testid="note-preview"
                 >
-                  <app-note-body [content]="d.content" [slugs]="store.slugByKey()" />
+                  <app-note-body
+                    [content]="d.content"
+                    [slugs]="store.slugByKey()"
+                    [pageTitle]="d.title"
+                  />
                 </div>
               </div>
             </div>
@@ -232,6 +236,7 @@ interface Draft {
             <app-note-body
               [content]="note.content"
               [slugs]="store.slugByKey()"
+              [pageTitle]="note.title"
               (openLink)="guard(openNote, $event)"
             />
             <aside class="mt-8 border-t border-line pt-4" data-testid="backlinks">

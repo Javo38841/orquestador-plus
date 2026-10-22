@@ -272,7 +272,18 @@
     "search": "Buscar en la wiki · Ctrl K",
     "exit": "Salir de la wiki · Esc",
     "sidebar": "Secciones de la wiki",
-    "breadcrumbs": "Ruta de la página"
+    "breadcrumbs": "Ruta de la página",
+    "callout": {
+      "note": "Nota",
+      "tip": "Consejo",
+      "caution": "Precaución"
+    },
+    "code": {
+      "saveSnippet": "Guardar en Snippets",
+      "saved": "Guardado",
+      "tooLong": "El código es demasiado largo para un snippet",
+      "failed": "No se pudo guardar el snippet"
+    }
   },
   "bugs": {
     "new": "Nuevo bug",
