@@ -13,7 +13,7 @@
   },
   "scripts": {
     "postinstall": "electron-builder install-app-deps",
-    "dev": "concurrently -k -n ng,electron-build,electron -c cyan,magenta,green \"ng serve\" \"node scripts/build-electron.mjs --watch\" \"wait-on tcp:127.0.0.1:4200 dist/main/main.js dist/preload/preload.js && cross-env ELECTRON_RENDERER_URL=http://localhost:4200 electron .\"",
+    "dev": "concurrently -k -n ng,electron-build,electron -c cyan,magenta,green \"ng serve --host 127.0.0.1\" \"node scripts/build-electron.mjs --watch\" \"wait-on tcp:127.0.0.1:4200 dist/main/main.js dist/preload/preload.js && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:4200 electron .\"",
     "start": "npm run build && electron .",
     "build": "npm run build:renderer && npm run build:electron",
     "build:renderer": "ng build",

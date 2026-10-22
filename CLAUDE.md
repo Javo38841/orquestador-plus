@@ -122,7 +122,7 @@ instead of deciding: the owner validates criteria.
 ## Commands
 
 ```
-npm run dev            # ng serve + esbuild watch + Electron pointing at localhost:4200
+npm run dev            # ng serve + esbuild watch + Electron pointing at 127.0.0.1:4200
 npm run lint           # ESLint (TS, Angular templates, renderer import boundaries)
 npm run format:check   # Prettier --check
 npm run typecheck      # tsc for renderer, renderer specs and electron code
