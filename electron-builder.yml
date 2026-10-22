@@ -10,6 +10,7 @@ directories:
 files:
   - dist/**/*
   - '!dist/**/*.map'
+  - '!dist/seed/**'
   - package.json
 
 publish: null
