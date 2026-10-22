@@ -72,6 +72,97 @@ describe('wiki shared helpers', () => {
   });
 });
 
+describe('wiki markdown extensions', () => {
+  it('CP-08-46: :::note, :::tip and :::caution become callouts with their inner blocks', () => {
+    const blocks = parseMarkdown(
+      ':::note\nTexto con `code` y [[Otra]].\n\n- uno\n- dos\n:::\n\n:::tip[Un consejo]\nHola\n:::\n\n:::caution\nCuidado\n:::',
+    );
+    expect(blocks).toHaveLength(3);
+    const [note, tip, caution] = blocks;
+    expect(note).toMatchObject({ type: 'callout', kind: 'note' });
+    expect(note.type === 'callout' && note.title).toBeUndefined();
+    expect(note.type === 'callout' && note.blocks.map((b) => b.type)).toEqual([
+      'paragraph',
+      'list',
+    ]);
+    expect(
+      note.type === 'callout' &&
+        note.blocks[0].type === 'paragraph' &&
+        note.blocks[0].inline.map((i) => i.type),
+    ).toEqual(['text', 'code', 'text', 'link', 'text']);
+    expect(tip).toMatchObject({ type: 'callout', kind: 'tip', title: 'Un consejo' });
+    expect(caution).toMatchObject({ type: 'callout', kind: 'caution' });
+  });
+
+  it('CP-08-47: unknown, unclosed and nested callouts stay plain text', () => {
+    const unknown = parseMarkdown(':::danger\nx\n:::\n\nDespués');
+    expect(unknown.some((b) => b.type === 'callout')).toBe(false);
+    expect(unknown.at(-1)).toMatchObject({ type: 'paragraph' });
+
+    const unclosed = parseMarkdown(':::note\nsin cierre\n\nResto');
+    expect(unclosed.some((b) => b.type === 'callout')).toBe(false);
+    expect(unclosed.at(-1)).toMatchObject({ type: 'paragraph' });
+
+    const nested = parseMarkdown(':::note\n:::tip\ndentro\n:::\n:::\nfin');
+    expect(nested[0]).toMatchObject({ type: 'callout', kind: 'note' });
+    const inner = nested[0].type === 'callout' ? nested[0].blocks : [];
+    expect(inner.some((b) => b.type === 'callout')).toBe(false);
+    expect(nested.filter((b) => b.type === 'callout')).toHaveLength(1);
+  });
+
+  it('CP-08-48: a code block carries language, title and the exact text', () => {
+    const text = 'SELECT *\n  FROM t;\n\n-- fin';
+    const [titled] = parseMarkdown('```sql title="consulta.sql"\n' + text + '\n```');
+    expect(titled).toEqual({ type: 'code', text, lang: 'sql', title: 'consulta.sql' });
+    const [plain] = parseMarkdown('```sql\nSELECT 1\n```');
+    expect(plain).toEqual({ type: 'code', text: 'SELECT 1', lang: 'sql' });
+    expect(plain).not.toHaveProperty('title');
+  });
+
+  it('CP-08-49: unclosed code and odd titles are kept as literal data', () => {
+    const [unclosed] = parseMarkdown('```js\nconsole.log(1)');
+    expect(unclosed).toEqual({ type: 'code', text: 'console.log(1)', lang: 'js' });
+    const [empty] = parseMarkdown('```sql title=""\nx\n```');
+    expect(empty).not.toHaveProperty('title');
+    const [odd] = parseMarkdown('```sql title="<b>\'a\'</b>"\n<i>x</i>\n```');
+    expect(odd).toMatchObject({ title: "<b>'a'</b>", text: '<i>x</i>' });
+  });
+
+  it('CP-08-50: a table keeps header, rows and per-column alignment', () => {
+    const [table] = parseMarkdown(
+      '| A | B | C |\n| :-- | :-: | --: |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |',
+    );
+    expect(table.type).toBe('table');
+    if (table.type !== 'table') return;
+    expect(table.align).toEqual(['left', 'center', 'right']);
+    expect(table.header).toEqual([
+      [{ type: 'text', text: 'A' }],
+      [{ type: 'text', text: 'B' }],
+      [{ type: 'text', text: 'C' }],
+    ]);
+    expect(table.rows).toHaveLength(2);
+    expect(table.rows[1][2]).toEqual([{ type: 'text', text: '6' }]);
+  });
+
+  it('CP-08-51: short and long rows fit the header; \\| stays inside the cell', () => {
+    const [table] = parseMarkdown('| A | B |\n|---|---|\n| 1 |\n| 1 | 2 | 3 |\n| x \\| y | z |');
+    if (table.type !== 'table') throw new Error('not a table');
+    expect(table.rows.map((r) => r.length)).toEqual([2, 2, 2]);
+    expect(table.rows[0][1]).toEqual([]);
+    expect(table.rows[2][0]).toEqual([{ type: 'text', text: 'x | y' }]);
+  });
+
+  it('CP-08-52: HTML in the content is plain text data, never markup', () => {
+    const blocks = parseMarkdown(
+      '<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n\n[x](javascript:alert(1)) <iframe src="a"></iframe>',
+    );
+    expect(blocks.every((b) => b.type === 'paragraph')).toBe(true);
+    const texts = blocks.flatMap((b) => (b.type === 'paragraph' ? b.inline : []));
+    expect(texts.every((i) => i.type === 'text')).toBe(true);
+    expect(texts.map((i) => (i.type === 'text' ? i.text : '')).join('')).toContain('<script>');
+  });
+});
+
 describe('wiki tree', () => {
   const note = (slug: string, section?: string, order?: number): NoteSummary => ({
     slug,

@@ -78,3 +78,56 @@ test('CP-08-31: leaving with unsaved changes asks before discarding', async () =
   await page.getByTestId('discard-yes').click();
   await expect(page.getByRole('heading', { name: 'Tareas', level: 1 })).toBeVisible();
 });
+
+const RICH_PAGE = [
+  ':::tip[Antes de empezar]',
+  'Revisa la conexión.',
+  ':::',
+  '',
+  '```sql title="consulta.sql"',
+  'SELECT *',
+  '  FROM usuarios;',
+  '```',
+  '',
+  '| Campo | Tipo |',
+  '|:--|--:|',
+  '| id | int |',
+].join('\n');
+
+async function openRichPage(): Promise<void> {
+  await launched.page.getByTestId('note-item').filter({ hasText: 'Rica' }).click();
+}
+
+test.describe('callouts, titled code and tables', () => {
+  test.beforeEach(async () => {
+    await launched.close();
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orq-e2e-'));
+    page(dataDir, 'Guías/Rica.md', 'Rica', '', RICH_PAGE);
+    launched = await launchApp(dataDir);
+    await launched.page.getByRole('link', { name: 'Tareas' }).click();
+    await launched.page.getByRole('link', { name: 'Wiki' }).click();
+  });
+
+  test('CP-08-56: a page shows its callout with icon, the code title and the table header', async () => {
+    const { page } = launched;
+    await openRichPage();
+    await expect(page.getByTestId('callout')).toContainText('Antes de empezar');
+    await expect(page.getByTestId('callout-icon')).toBeVisible();
+    await expect(page.getByTestId('code-title')).toHaveText('consulta.sql');
+    await expect(page.getByTestId('note-table').locator('th')).toHaveText(['Campo', 'Tipo']);
+  });
+
+  test('CP-08-57: "Guardar en Snippets" lists the exact code in Snippets', async () => {
+    const { page } = launched;
+    await openRichPage();
+    await page.getByTestId('code-save-snippet').click();
+    await expect(page.getByTestId('code-save-feedback')).toHaveText('Guardado');
+
+    await page.getByTestId('wiki-exit').click();
+    await page.getByRole('link', { name: 'Snippets' }).click();
+    const card = page.getByTestId('snippet-card').filter({ hasText: 'consulta.sql' });
+    await expect(card).toBeVisible();
+    await expect(card).toContainText('SELECT *');
+    await expect(card).toContainText('FROM usuarios;');
+  });
+});

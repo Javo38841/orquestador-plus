@@ -171,11 +171,18 @@ export type Inline =
   | { type: 'strong'; text: string }
   | { type: 'link'; label: string; key: string };
 
+export type CalloutKind = 'note' | 'tip' | 'caution';
+export const CALLOUT_KINDS: readonly CalloutKind[] = ['note', 'tip', 'caution'];
+
+export type TableAlign = 'left' | 'center' | 'right' | null;
+
 export type Block =
   | { type: 'heading'; level: number; inline: Inline[] }
   | { type: 'paragraph'; inline: Inline[] }
-  | { type: 'code'; text: string }
-  | { type: 'list'; ordered: boolean; items: Inline[][] };
+  | { type: 'code'; text: string; lang?: string; title?: string }
+  | { type: 'list'; ordered: boolean; items: Inline[][] }
+  | { type: 'callout'; kind: CalloutKind; title?: string; blocks: Block[] }
+  | { type: 'table'; align: TableAlign[]; header: Inline[][]; rows: Inline[][][] };
 
 const INLINE = /`([^`\n]+)`|\*\*([^*\n]+)\*\*|\[\[([^[\]\n|]+)\]\]/g;
 
@@ -196,15 +203,63 @@ function parseInline(text: string): Inline[] {
   return out;
 }
 
-/**
- * Minimal Markdown for the reading view: headings, paragraphs, lists, fenced code,
- * `code`, **bold** and `[[links]]`. Produces data, never HTML, so nothing is injected.
- */
-export function parseMarkdown(content: string): Block[] {
+const FENCE = /^\s{0,3}(```|~~~)(.*)$/;
+const CALLOUT_OPEN = /^:::([A-Za-z]+)(?:\[([^\]]*)\])?\s*$/;
+const CALLOUT_CLOSE = /^:::\s*$/;
+const TABLE_SEPARATOR = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/;
+
+/** Cells of a table row; `\|` stays inside the cell as a plain bar. */
+function splitRow(line: string): string[] {
+  const cells: string[] = [];
+  let cell = '';
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '\\' && line[i + 1] === '|') {
+      cell += '|';
+      i++;
+    } else if (line[i] === '|') {
+      cells.push(cell);
+      cell = '';
+    } else cell += line[i];
+  }
+  cells.push(cell);
+  if (line.trimStart().startsWith('|')) cells.shift();
+  if (cells.length > 0 && /(?<!\\)\|\s*$/.test(line)) cells.pop();
+  return cells.map((c) => c.trim());
+}
+
+function alignOf(cell: string): TableAlign {
+  const left = cell.startsWith(':');
+  const right = cell.endsWith(':');
+  return left && right ? 'center' : right ? 'right' : left ? 'left' : null;
+}
+
+/** Language and `title="…"` from the text after the opening fence. */
+function parseFenceInfo(info: string): { lang?: string; title?: string } {
+  const title = /\btitle="([^"]*)"/.exec(info)?.[1].trim();
+  const lang = /^\s*([^\s"]+)/.exec(info.replace(/\btitle="[^"]*"/, ''))?.[1];
+  return {
+    ...(lang ? { lang } : {}),
+    ...(title ? { title } : {}),
+  };
+}
+
+/** Index of the line closing the callout opened at `from`, or -1. Fenced code is skipped. */
+function findCalloutClose(lines: string[], from: number): number {
+  let fence: string | null = null;
+  for (let i = from + 1; i < lines.length; i++) {
+    const marker = FENCE.exec(lines[i])?.[1];
+    if (fence === null && marker) fence = marker;
+    else if (fence !== null && marker === fence) fence = null;
+    else if (fence === null && CALLOUT_CLOSE.test(lines[i])) return i;
+  }
+  return -1;
+}
+
+function parseBlocks(lines: string[], allowCallouts: boolean): Block[] {
   const blocks: Block[] = [];
   let paragraph: string[] = [];
   let list: { ordered: boolean; items: Inline[][] } | null = null;
-  let code: { marker: string; lines: string[] } | null = null;
+  let code: { marker: string; lines: string[]; lang?: string; title?: string } | null = null;
 
   const flush = (): void => {
     if (paragraph.length)
@@ -213,20 +268,73 @@ export function parseMarkdown(content: string): Block[] {
     paragraph = [];
     list = null;
   };
+  const closeCode = (c: NonNullable<typeof code>): void => {
+    blocks.push({
+      type: 'code',
+      text: c.lines.join('\n'),
+      ...(c.lang ? { lang: c.lang } : {}),
+      ...(c.title ? { title: c.title } : {}),
+    });
+  };
 
-  for (const line of content.split(/\r?\n/)) {
-    const fence = /^\s{0,3}(```|~~~)/.exec(line)?.[1];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const fence = FENCE.exec(line);
     if (code) {
-      if (fence === code.marker) {
-        blocks.push({ type: 'code', text: code.lines.join('\n') });
+      if (fence?.[1] === code.marker) {
+        closeCode(code);
         code = null;
       } else code.lines.push(line);
       continue;
     }
     if (fence) {
       flush();
-      code = { marker: fence, lines: [] };
+      code = { marker: fence[1], lines: [], ...parseFenceInfo(fence[2]) };
       continue;
+    }
+    const open = allowCallouts ? CALLOUT_OPEN.exec(line) : null;
+    const kind = open?.[1].toLowerCase() as CalloutKind | undefined;
+    if (open && kind && CALLOUT_KINDS.includes(kind)) {
+      const end = findCalloutClose(lines, i);
+      if (end !== -1) {
+        flush();
+        const title = open[2]?.trim();
+        blocks.push({
+          type: 'callout',
+          kind,
+          ...(title ? { title } : {}),
+          // A callout inside a callout is not supported: its opener stays plain text.
+          blocks: parseBlocks(lines.slice(i + 1, end), false),
+        });
+        i = end;
+        continue;
+      }
+    }
+    if (
+      line.includes('|') &&
+      i + 1 < lines.length &&
+      lines[i + 1].includes('-') &&
+      TABLE_SEPARATOR.test(lines[i + 1])
+    ) {
+      const header = splitRow(line);
+      const separator = splitRow(lines[i + 1]);
+      if (header.length === separator.length) {
+        flush();
+        const rows: Inline[][][] = [];
+        let j = i + 2;
+        for (; j < lines.length && lines[j].trim() !== '' && lines[j].includes('|'); j++) {
+          const cells = splitRow(lines[j]);
+          rows.push(header.map((_, col) => parseInline(cells[col] ?? '')));
+        }
+        blocks.push({
+          type: 'table',
+          align: separator.map(alignOf),
+          header: header.map((c) => parseInline(c)),
+          rows,
+        });
+        i = j - 1;
+        continue;
+      }
     }
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     const item = /^\s*(?:([-*+])|\d+[.)])\s+(.*)$/.exec(line);
@@ -245,9 +353,18 @@ export function parseMarkdown(content: string): Block[] {
       paragraph.push(line.trim());
     }
   }
-  if (code) blocks.push({ type: 'code', text: code.lines.join('\n') });
+  if (code) closeCode(code);
   flush();
   return blocks;
+}
+
+/**
+ * Minimal Markdown for the reading view: headings, paragraphs, lists, fenced code (with
+ * `title="…"`), tables, `:::note|tip|caution` callouts, `code`, **bold** and `[[links]]`.
+ * Produces data, never HTML, so nothing is injected.
+ */
+export function parseMarkdown(content: string): Block[] {
+  return parseBlocks(content.split(/\r?\n/), true);
 }
 
 export interface WikiSection {
