@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 import type { OrquestadorApi } from '../../../../shared/ipc';
-import type { Task, TaskResult } from '../../../../shared/tasks';
+import type { ProjectResult, Task, TaskResult } from '../../../../shared/tasks';
+import { PROJECT_NAME_MAX_LENGTH } from '../../../../shared/tasks';
 import { DESKTOP_API } from '../../core/desktop-api';
 import { TRANSLATIONS } from '../../i18n/transloco-loader';
 import { BoardPage } from './board-page';
@@ -27,7 +28,26 @@ const task = (id: number, extra: Partial<Task> = {}): Task => ({
 const recent = () => new Date(Date.now() - 24 * 3600 * 1000).toISOString();
 const old = () => new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
 
-async function render(stored: Task[]) {
+interface Options {
+  stored?: { id: number; name: string }[];
+  board?: number | null;
+  create?: (name: string) => Promise<ProjectResult>;
+}
+
+async function render(stored: Task[], options: Options = {}) {
+  const projects = options.stored ?? [
+    { id: 1, name: 'api' },
+    { id: 2, name: 'web' },
+  ];
+  const setBoardProject = vi.fn(async (id: number | null) => id);
+  const createProject = vi.fn(
+    options.create ??
+      (async (name: string): Promise<ProjectResult> => {
+        const project = { id: projects.length + 10, name: name.trim() };
+        projects.push(project);
+        return { ok: true, project };
+      }),
+  );
   const setTaskStatus = vi.fn(async (id: number, status: Task['status']): Promise<TaskResult> => ({
     ok: true,
     task: {
@@ -39,10 +59,10 @@ async function render(stored: Task[]) {
   const api = {
     listTasks: async () => stored,
     listTags: async () => ['infra', 'ui'],
-    listProjects: async () => [
-      { id: 1, name: 'api' },
-      { id: 2, name: 'web' },
-    ],
+    listProjects: async () => [...projects],
+    createProject,
+    getBoardProject: async () => options.board ?? null,
+    setBoardProject,
     setTaskStatus,
   } as unknown as OrquestadorApi;
   await TestBed.configureTestingModule({
@@ -74,7 +94,43 @@ async function render(stored: Task[]) {
     [...el.querySelectorAll<HTMLButtonElement>(`[data-testid="${id}"]`)].find((b) =>
       b.textContent!.includes(text),
     )!;
-  return { fixture, el, settle, column, titles, chip, setTaskStatus };
+  const select = () => el.querySelector<HTMLSelectElement>('[data-testid="board-select"]')!;
+  const pick = async (value: string) => {
+    select().value = value;
+    select().dispatchEvent(new Event('change'));
+    await settle();
+  };
+  const items = () =>
+    [...el.querySelectorAll('[data-testid="board-project-item"]')].map((i) =>
+      i.textContent!.trim(),
+    );
+  const create = async (name: string) => {
+    const input = el.querySelector<HTMLInputElement>('[data-testid="project-name"]')!;
+    input.value = name;
+    input.dispatchEvent(new Event('input'));
+    el.querySelector<HTMLFormElement>('[data-testid="project-form"]')!.dispatchEvent(
+      new Event('submit'),
+    );
+    await settle();
+    await settle();
+  };
+  const error = () => el.querySelector('[data-testid="project-error"]')?.textContent?.trim();
+  return {
+    fixture,
+    el,
+    settle,
+    column,
+    titles,
+    chip,
+    setTaskStatus,
+    select,
+    pick,
+    items,
+    create,
+    error,
+    setBoardProject,
+    createProject,
+  };
 }
 
 const sample = () => [
@@ -145,31 +201,119 @@ describe('BoardPage', () => {
     expect(card.querySelector('[role="menu"]')).toBeNull();
   });
 
-  it('CP-05-01: "Activas" shows every task including loose ones; a project chip shows only that project', async () => {
-    const { settle, titles, chip } = await render(sample());
+  it('CP-04-05: the "Proyectos" section lists every project', async () => {
+    const { el, items } = await render(sample());
+    expect(el.querySelector('[data-testid="board-projects-panel"] h2')!.textContent).toContain(
+      'Proyectos',
+    );
+    expect(items()).toEqual(['api', 'web']);
+  });
+
+  it('CP-04-09: the combo box offers "General" first and selected, then one option per project', async () => {
+    const { select } = await render(sample());
+    expect([...select().options].map((o) => o.textContent!.trim())).toEqual([
+      'General',
+      'api',
+      'web',
+    ]);
+    expect(select().value).toBe('');
+  });
+
+  it('CP-05-04: "General" shows every task including loose ones; a project shows only its own', async () => {
+    const { pick, titles } = await render(sample());
     expect(titles('todo')).toContain('Suelta uno');
 
-    chip('board-filter-project', 'api').click();
-    await settle();
+    await pick('1');
     expect(titles('todo')).toEqual(['Api infra']);
     expect(titles('in_progress')).toEqual(['Api en curso']);
     expect(titles('done')).toEqual([]);
 
-    chip('board-filter-active', 'Activas').click();
-    await settle();
+    await pick('');
     expect(titles('todo')).toContain('Suelta uno');
   });
 
-  it('CP-05-02: tag chips filter the board and combine with the project filter', async () => {
-    const { settle, titles, chip } = await render(sample());
+  it('CP-04-10: choosing a project in the side panel is the same as choosing it in the combo box', async () => {
+    const { el, settle, select, titles, setBoardProject } = await render(sample());
+    el.querySelectorAll<HTMLButtonElement>('[data-testid="board-project-item"]')[1]!.click();
+    await settle();
+    expect(select().value).toBe('2');
+    expect(titles('todo')).toEqual(['Web infra']);
+    expect(setBoardProject).toHaveBeenLastCalledWith(2);
+  });
+
+  it('CP-05-05: project chips are gone; tag chips still filter and combine with the chosen board', async () => {
+    const { el, settle, titles, chip, pick } = await render(sample());
+    expect(el.querySelector('[data-testid="board-filter-project"]')).toBeNull();
+    expect(el.querySelector('[data-testid="board-filter-active"]')).toBeNull();
+
     chip('board-filter-tag', '#infra').click();
     await settle();
     expect(titles('todo')).toEqual(['Web infra', 'Api infra']);
     expect(titles('in_progress')).toEqual([]);
 
-    chip('board-filter-project', 'web').click();
-    await settle();
+    await pick('2');
     expect(titles('todo')).toEqual(['Web infra']);
+  });
+
+  it('CP-04-06: creating a project adds it to the list and the combo box and clears the form', async () => {
+    const { el, create, items, select, error, createProject } = await render(sample());
+    await create('  nuevo  ');
+    expect(createProject).toHaveBeenCalledWith('nuevo');
+    expect(items()).toContain('nuevo');
+    expect([...select().options].map((o) => o.textContent!.trim())).toContain('nuevo');
+    expect(error()).toBeUndefined();
+    expect(el.querySelector<HTMLInputElement>('[data-testid="project-name"]')!.value).toBe('');
+  });
+
+  it('CP-04-07: an empty, blank or too long name creates nothing and shows an error', async () => {
+    const { create, items, error, createProject } = await render(sample());
+    await create('');
+    expect(error()).toBe('Escribe un nombre para el proyecto.');
+    await create('   ');
+    expect(error()).toBe('Escribe un nombre para el proyecto.');
+    await create('x'.repeat(PROJECT_NAME_MAX_LENGTH + 1));
+    expect(error()).toBe(`El nombre no puede superar ${PROJECT_NAME_MAX_LENGTH} caracteres.`);
+    expect(createProject).not.toHaveBeenCalled();
+    expect(items()).toEqual(['api', 'web']);
+  });
+
+  it('CP-04-08: a name that already exists shows an error and does not duplicate it', async () => {
+    const { create, items, error } = await render(sample(), {
+      create: async () => ({ ok: false, error: 'duplicate_project' }),
+    });
+    await create('WEB');
+    expect(error()).toBe('Ya existe un proyecto con ese nombre.');
+    expect(items()).toEqual(['api', 'web']);
+  });
+
+  it('CP-04-10: the new-project form is a real form submitted with Enter, and the combo box is a native select', async () => {
+    const { el, select } = await render(sample());
+    const form = el.querySelector<HTMLFormElement>('[data-testid="project-form"]')!;
+    expect(form.tagName).toBe('FORM');
+    expect(form.querySelector('button[type="submit"]')).not.toBeNull();
+    expect(form.querySelector('input')!.id).toBeTruthy();
+    expect(select().tagName).toBe('SELECT');
+    expect(el.querySelector(`label[for="${select().id}"]`)).not.toBeNull();
+    for (const item of el.querySelectorAll('[data-testid="board-project-item"]')) {
+      expect(item.tagName).toBe('BUTTON');
+    }
+  });
+
+  it('CP-04-11: if the chosen project no longer exists the board goes back to "General"', async () => {
+    const { select, titles, setBoardProject } = await render(sample(), { board: 99 });
+    expect(select().value).toBe('');
+    expect(titles('todo')).toContain('Suelta uno');
+    expect(setBoardProject).toHaveBeenCalledWith(null);
+  });
+
+  it('CP-04-12: the last chosen board is restored on open and every change is saved', async () => {
+    const { select, titles, pick, setBoardProject } = await render(sample(), { board: 2 });
+    expect(select().value).toBe('2');
+    expect(titles('todo')).toEqual(['Web infra']);
+    await pick('1');
+    expect(setBoardProject).toHaveBeenLastCalledWith(1);
+    await pick('');
+    expect(setBoardProject).toHaveBeenLastCalledWith(null);
   });
 
   it('CP-05-03: "Hecho" leaves out tasks completed more than 7 days ago', async () => {

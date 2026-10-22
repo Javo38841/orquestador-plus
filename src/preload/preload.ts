@@ -48,6 +48,8 @@ const api: OrquestadorApi = {
   revokePortalLink: (id) => ipcRenderer.invoke(IpcChannel.revokePortalLink, id),
   getRemindersEnabled: () => ipcRenderer.invoke(IpcChannel.getRemindersEnabled),
   setRemindersEnabled: (enabled) => ipcRenderer.invoke(IpcChannel.setRemindersEnabled, enabled),
+  getBoardProject: () => ipcRenderer.invoke(IpcChannel.getBoardProject),
+  setBoardProject: (projectId) => ipcRenderer.invoke(IpcChannel.setBoardProject, projectId),
   exportAll: () => ipcRenderer.invoke(IpcChannel.exportAll),
 };
 

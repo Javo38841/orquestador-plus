@@ -26,6 +26,7 @@ function setup(stored: Task[]) {
     listTasks: vi.fn(async () => stored),
     listTags: vi.fn(async () => ['api', 'infra']),
     listProjects: vi.fn(async () => []),
+    createProject: vi.fn(async (name: string) => ({ ok: true, project: { id: 5, name } })),
     createTask: vi.fn(async (input): Promise<TaskResult> => ({
       ok: true,
       task: { ...task(9), title: input.title },
@@ -187,5 +188,20 @@ describe('TasksStore', () => {
     });
     expect(error).toBe('recurrence_weekday');
     expect(api.createTask).not.toHaveBeenCalled();
+  });
+
+  it('CP-04-06: createProject adds the project to the sorted list', async () => {
+    const { store, api } = setup([]);
+    await store.load();
+    expect(await store.createProject('  zeta ')).toEqual({ project: { id: 5, name: 'zeta' } });
+    await store.createProject('alfa');
+    expect(api.createProject).toHaveBeenCalledWith('zeta');
+    expect(store.projects().map((p) => p.name)).toEqual(['alfa', 'zeta']);
+  });
+
+  it('CP-04-07: createProject rejects an invalid name without calling the API', async () => {
+    const { store, api } = setup([]);
+    expect(await store.createProject('  ')).toEqual({ error: 'empty' });
+    expect(api.createProject).not.toHaveBeenCalled();
   });
 });

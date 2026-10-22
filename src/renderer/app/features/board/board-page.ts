@@ -6,11 +6,26 @@ import {
   inject,
   OnInit,
   signal,
+  viewChild,
 } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { BOARD_COLUMNS, buildBoard } from '../../../../shared/board';
-import { isOverdue, localDate, type Task, type TaskStatus } from '../../../../shared/tasks';
+import {
+  isOverdue,
+  localDate,
+  PROJECT_NAME_MAX_LENGTH,
+  type Task,
+  type TaskError,
+  type TaskStatus,
+} from '../../../../shared/tasks';
+import { DESKTOP_API } from '../../core/desktop-api';
 import { TasksStore } from '../tasks/tasks.store';
+
+const ERROR_KEYS: Partial<Record<TaskError, string>> = {
+  empty: 'board.errors.empty',
+  too_long: 'board.errors.tooLong',
+  duplicate_project: 'board.errors.duplicate',
+};
 
 const COLUMN_KEYS: Record<TaskStatus, string> = {
   todo: 'board.columns.todo',
@@ -28,29 +43,24 @@ const COLUMN_KEYS: Record<TaskStatus, string> = {
       <p class="mt-1 text-sm text-muted">{{ 'pages.board' | transloco }}</p>
     </header>
 
-    <div class="mb-3 flex flex-wrap items-center gap-2 text-sm" data-testid="board-projects">
-      <button
-        type="button"
-        class="rounded-full border px-3 py-0.5 text-xs"
-        data-testid="board-filter-active"
-        [class]="projectFilter() === null ? 'border-accent text-accent' : 'border-line'"
-        [attr.aria-pressed]="projectFilter() === null"
-        (click)="projectFilter.set(null)"
+    <div class="mb-3 flex items-center gap-2 text-sm">
+      <label for="board-select" class="text-muted">{{ 'board.select' | transloco }}</label>
+      <select
+        id="board-select"
+        class="rounded-md border border-line bg-surface-raised px-2 py-1"
+        data-testid="board-select"
+        [value]="projectFilter() === null ? '' : '' + projectFilter()"
+        (change)="choose($any($event.target).value)"
       >
-        {{ 'board.active' | transloco }}
-      </button>
-      @for (project of store.projects(); track project.id) {
-        <button
-          type="button"
-          class="rounded-full border px-3 py-0.5 text-xs"
-          data-testid="board-filter-project"
-          [class]="projectFilter() === project.id ? 'border-accent text-accent' : 'border-line'"
-          [attr.aria-pressed]="projectFilter() === project.id"
-          (click)="projectFilter.set(project.id)"
-        >
-          {{ project.name }}
-        </button>
-      }
+        <option value="" [selected]="projectFilter() === null">
+          {{ 'board.general' | transloco }}
+        </option>
+        @for (project of store.projects(); track project.id) {
+          <option [value]="project.id" [selected]="projectFilter() === project.id">
+            {{ project.name }}
+          </option>
+        }
+      </select>
     </div>
     @if (store.tags().length > 0) {
       <div class="mb-4 flex flex-wrap items-center gap-2 text-sm" data-testid="board-tags">
@@ -70,93 +80,158 @@ const COLUMN_KEYS: Record<TaskStatus, string> = {
       </div>
     }
 
-    <div class="grid grid-cols-3 gap-4">
-      @for (status of columns; track status) {
-        <section
-          class="min-h-40 rounded-lg border border-line bg-surface p-3"
-          data-testid="board-column"
-          [attr.data-status]="status"
-          [attr.aria-label]="columnKey(status) | transloco"
-          (dragover)="$event.preventDefault()"
-          (drop)="drop($event, status)"
-        >
-          <h2
-            class="mb-3 flex items-center justify-between text-[11px] font-semibold tracking-widest text-muted uppercase"
+    <div class="flex items-start gap-4">
+      <div class="grid min-w-0 flex-1 grid-cols-3 gap-4">
+        @for (status of columns; track status) {
+          <section
+            class="min-h-40 rounded-lg border border-line bg-surface p-3"
+            data-testid="board-column"
+            [attr.data-status]="status"
+            [attr.aria-label]="columnKey(status) | transloco"
+            (dragover)="$event.preventDefault()"
+            (drop)="drop($event, status)"
           >
-            <span>{{ columnKey(status) | transloco }}</span>
-            <span data-testid="board-count">{{ board()[status].length }}</span>
-          </h2>
-          <div class="space-y-2">
-            @for (task of board()[status]; track task.id) {
-              <article
-                class="rounded-md border border-line bg-surface-raised p-3 text-sm"
-                data-testid="board-card"
-                [attr.data-task-id]="task.id"
-                draggable="true"
-                (dragstart)="$event.dataTransfer?.setData('text/plain', '' + task.id)"
-              >
-                <p
-                  class="break-words"
-                  [class.line-through]="task.status === 'done'"
-                  [class.text-muted]="task.status === 'done'"
+            <h2
+              class="mb-3 flex items-center justify-between text-[11px] font-semibold tracking-widest text-muted uppercase"
+            >
+              <span>{{ columnKey(status) | transloco }}</span>
+              <span data-testid="board-count">{{ board()[status].length }}</span>
+            </h2>
+            <div class="space-y-2">
+              @for (task of board()[status]; track task.id) {
+                <article
+                  class="rounded-md border border-line bg-surface-raised p-3 text-sm"
+                  data-testid="board-card"
+                  [attr.data-task-id]="task.id"
+                  draggable="true"
+                  (dragstart)="$event.dataTransfer?.setData('text/plain', '' + task.id)"
                 >
-                  {{ task.title }}
-                </p>
-                <div class="mt-2 flex flex-wrap items-center gap-1 text-xs">
-                  <span
-                    class="rounded-full px-2 py-0.5"
-                    data-testid="board-card-project"
-                    [class]="task.projectName ? 'bg-project/20 text-project' : 'bg-line text-muted'"
-                    >{{ task.projectName ?? ('tasks.loose' | transloco) }}</span
+                  <p
+                    class="break-words"
+                    [class.line-through]="task.status === 'done'"
+                    [class.text-muted]="task.status === 'done'"
                   >
-                  @for (tag of task.tags; track tag) {
-                    <span class="rounded-full bg-line px-2 py-0.5 text-muted">#{{ tag }}</span>
-                  }
-                  @if (task.dueDate) {
-                    <span [class]="overdue(task) ? 'text-warn' : 'text-muted'">{{
-                      task.dueDate
-                    }}</span>
-                  }
-                </div>
-                <div class="relative mt-2">
-                  <button
-                    type="button"
-                    class="rounded-md border border-line px-2 py-1 text-xs"
-                    data-testid="board-move"
-                    aria-haspopup="menu"
-                    [attr.aria-expanded]="menuFor() === task.id"
-                    (click)="toggleMenu(task, $event)"
-                  >
-                    {{ 'board.move' | transloco }}
-                  </button>
-                  @if (menuFor() === task.id) {
-                    <div
-                      role="menu"
-                      class="absolute z-10 mt-1 flex min-w-36 flex-col rounded-md border border-line bg-surface-raised p-1 shadow-lg"
-                      data-testid="board-move-menu"
+                    {{ task.title }}
+                  </p>
+                  <div class="mt-2 flex flex-wrap items-center gap-1 text-xs">
+                    <span
+                      class="rounded-full px-2 py-0.5"
+                      data-testid="board-card-project"
+                      [class]="
+                        task.projectName ? 'bg-project/20 text-project' : 'bg-line text-muted'
+                      "
+                      >{{ task.projectName ?? ('tasks.loose' | transloco) }}</span
                     >
-                      @for (target of targets(task); track target) {
-                        <button
-                          type="button"
-                          role="menuitem"
-                          class="rounded px-2 py-1 text-left text-xs hover:bg-line focus:bg-line"
-                          data-testid="board-move-option"
-                          [attr.data-status]="target"
-                          (click)="move(task, target)"
-                        >
-                          {{ columnKey(target) | transloco }}
-                        </button>
-                      }
-                    </div>
-                  }
-                </div>
-              </article>
-            } @empty {
-              <p class="text-xs text-muted">{{ 'board.emptyColumn' | transloco }}</p>
-            }
-          </div>
-        </section>
-      }
+                    @for (tag of task.tags; track tag) {
+                      <span class="rounded-full bg-line px-2 py-0.5 text-muted">#{{ tag }}</span>
+                    }
+                    @if (task.dueDate) {
+                      <span [class]="overdue(task) ? 'text-warn' : 'text-muted'">{{
+                        task.dueDate
+                      }}</span>
+                    }
+                  </div>
+                  <div class="relative mt-2">
+                    <button
+                      type="button"
+                      class="rounded-md border border-line px-2 py-1 text-xs"
+                      data-testid="board-move"
+                      aria-haspopup="menu"
+                      [attr.aria-expanded]="menuFor() === task.id"
+                      (click)="toggleMenu(task, $event)"
+                    >
+                      {{ 'board.move' | transloco }}
+                    </button>
+                    @if (menuFor() === task.id) {
+                      <div
+                        role="menu"
+                        class="absolute z-10 mt-1 flex min-w-36 flex-col rounded-md border border-line bg-surface-raised p-1 shadow-lg"
+                        data-testid="board-move-menu"
+                      >
+                        @for (target of targets(task); track target) {
+                          <button
+                            type="button"
+                            role="menuitem"
+                            class="rounded px-2 py-1 text-left text-xs hover:bg-line focus:bg-line"
+                            data-testid="board-move-option"
+                            [attr.data-status]="target"
+                            (click)="move(task, target)"
+                          >
+                            {{ columnKey(target) | transloco }}
+                          </button>
+                        }
+                      </div>
+                    }
+                  </div>
+                </article>
+              } @empty {
+                <p class="text-xs text-muted">{{ 'board.emptyColumn' | transloco }}</p>
+              }
+            </div>
+          </section>
+        }
+      </div>
+      <aside
+        class="w-56 shrink-0 rounded-lg border border-line bg-surface p-3"
+        data-testid="board-projects-panel"
+        [attr.aria-labelledby]="'board-projects-title'"
+      >
+        <h2
+          id="board-projects-title"
+          class="mb-3 text-[11px] font-semibold tracking-widest text-muted uppercase"
+        >
+          {{ 'board.projects' | transloco }}
+        </h2>
+        <ul class="mb-3 space-y-1 text-sm">
+          @for (project of store.projects(); track project.id) {
+            <li>
+              <button
+                type="button"
+                class="w-full rounded px-2 py-1 text-left hover:bg-line"
+                data-testid="board-project-item"
+                [class]="projectFilter() === project.id ? 'text-accent' : ''"
+                [attr.aria-pressed]="projectFilter() === project.id"
+                (click)="choose('' + project.id)"
+              >
+                {{ project.name }}
+              </button>
+            </li>
+          } @empty {
+            <li class="text-xs text-muted">{{ 'board.noProjects' | transloco }}</li>
+          }
+        </ul>
+        <form
+          class="space-y-2"
+          data-testid="project-form"
+          (submit)="$event.preventDefault(); createProject()"
+        >
+          <label for="board-new-project" class="block text-xs text-muted">{{
+            'board.newProject' | transloco
+          }}</label>
+          <input
+            id="board-new-project"
+            type="text"
+            class="w-full rounded-md border border-line bg-surface-raised px-2 py-1 text-sm"
+            data-testid="project-name"
+            autocomplete="off"
+            [placeholder]="'board.newProjectPlaceholder' | transloco"
+            #nameInput
+            (input)="draft.set($any($event.target).value)"
+          />
+          @if (error(); as key) {
+            <p class="text-xs text-warn" role="alert" data-testid="project-error">
+              {{ key | transloco: { max: maxLength } }}
+            </p>
+          }
+          <button
+            type="submit"
+            class="rounded-md border border-line px-2 py-1 text-xs"
+            data-testid="project-create"
+          >
+            {{ 'board.create' | transloco }}
+          </button>
+        </form>
+      </aside>
     </div>
   `,
 })
@@ -164,8 +239,13 @@ export class BoardPage implements OnInit {
   protected readonly store = inject(TasksStore);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly columns = BOARD_COLUMNS;
-  /** Null is "Activas" (all tasks); otherwise the id of the project being shown. */
+  /** Null is "General" (all tasks); otherwise the id of the project being shown. */
   readonly projectFilter = signal<number | null>(null);
+  protected readonly draft = signal('');
+  protected readonly error = signal<string | null>(null);
+  protected readonly maxLength = PROJECT_NAME_MAX_LENGTH;
+  private readonly api = inject(DESKTOP_API);
+  private readonly nameInput = viewChild<ElementRef<HTMLInputElement>>('nameInput');
   readonly tagFilter = signal<string | null>(null);
   protected readonly menuFor = signal<number | null>(null);
   protected readonly board = computed(() =>
@@ -173,15 +253,40 @@ export class BoardPage implements OnInit {
   );
 
   ngOnInit(): void {
-    void this.store.load().then(() => {
-      // A filter whose project or tag vanished would show an empty board.
-      const project = this.projectFilter();
-      if (project !== null && !this.store.projects().some((p) => p.id === project)) {
-        this.projectFilter.set(null);
-      }
-      const tag = this.tagFilter();
-      if (tag !== null && !this.store.tags().includes(tag)) this.tagFilter.set(null);
-    });
+    void this.restore();
+  }
+
+  /** Loads the data and reopens the last board; a project that vanished falls back to "General". */
+  private async restore(): Promise<void> {
+    await this.store.load();
+    const saved = this.projectFilter() ?? (await this.api?.getBoardProject()) ?? null;
+    const exists = saved !== null && this.store.projects().some((p) => p.id === saved);
+    this.projectFilter.set(exists ? saved : null);
+    if (saved !== null && !exists) void this.api?.setBoardProject(null);
+    // A tag filter whose tag vanished would show an empty board.
+    const tag = this.tagFilter();
+    if (tag !== null && !this.store.tags().includes(tag)) this.tagFilter.set(null);
+  }
+
+  /** Picks a board ('' is "General") and remembers it for the next launch. */
+  protected choose(value: string): void {
+    const id = value === '' ? null : Number(value);
+    this.projectFilter.set(id);
+    void this.api?.setBoardProject(id);
+  }
+
+  protected async createProject(): Promise<void> {
+    const result = await this.store.createProject(this.draft());
+    if ('error' in result) {
+      this.error.set(ERROR_KEYS[result.error] ?? 'board.errors.generic');
+      return;
+    }
+    this.error.set(null);
+    this.draft.set('');
+    // The input never rendered the typed text through a binding, so clear it directly.
+    const input = this.nameInput();
+    if (input) input.nativeElement.value = '';
+    this.choose('' + result.project.id);
   }
 
   protected columnKey(status: TaskStatus): string {

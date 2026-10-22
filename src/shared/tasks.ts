@@ -73,6 +73,7 @@ export type TaskError =
   | 'too_long'
   | 'invalid_date'
   | 'invalid_project'
+  | 'duplicate_project'
   | 'not_found'
   | TagError
   | RecurrenceError

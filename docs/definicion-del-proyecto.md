@@ -206,7 +206,7 @@ Cubre: RF-04, RF-05, RF-07, RF-15
 Las tareas en movimiento, con y sin proyecto, en un kanban.
 
 - Columnas: **Entrantes** (reportes del portal sin revisar), **Por hacer**, **En curso** y **Hecho**.
-- Filtros arriba: “Activas”, un chip por proyecto (tablero de un proyecto, RF-04) y chips por etiqueta.
+- Arriba: un combo box de tablero (“General” por defecto, o un proyecto; RF-04) y chips por etiqueta. Un panel lateral “Proyectos” lista los proyectos y permite crear uno nuevo; el último tablero elegido se recuerda.
 - Cada tarjeta muestra proyecto o “Suelta”, etiquetas, repetición y fecha.
 
 ### 5.5 Bugs e incidencias — pág. 4
@@ -265,7 +265,7 @@ Un formulario temporal para que otras personas reporten problemas. Solo puede cr
 | RF-01 | Must | Hoy (captura rápida), Bandeja de entrada | ✅ Diseñado |
 | RF-02 | Must | Tareas, Tablero, Hoy · falta el formulario de crear/editar tarea | 🟡 Parcial |
 | RF-03 | Must | Hoy | ✅ Diseñado |
-| RF-04 | Must | Tablero (filtro por proyecto) · falta crear y administrar proyectos | 🟡 Parcial |
+| RF-04 | Must | Tablero con combo box de proyecto y creación de proyectos · falta renombrar, archivar y eliminar proyectos | 🟡 Parcial |
 | RF-05 | Must | Tablero, Tareas | ✅ Diseñado |
 | RF-06 | Must | Tareas (Series recurrentes) · falta el editor de repetición | 🟡 Parcial |
 | RF-07 | Must | Todas (chips #etiqueta), filtros en Tablero y Snippets | ✅ Diseñado |

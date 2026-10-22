@@ -61,6 +61,8 @@ export const IpcChannel = {
   revokePortalLink: 'portal:revoke-link',
   getRemindersEnabled: 'settings:get-reminders-enabled',
   setRemindersEnabled: 'settings:set-reminders-enabled',
+  getBoardProject: 'settings:get-board-project',
+  setBoardProject: 'settings:set-board-project',
   exportAll: 'export:all',
 } as const;
 
@@ -144,6 +146,9 @@ export interface OrquestadorApi {
   /** Whether task reminders show a notification (RF-18). */
   getRemindersEnabled(): Promise<boolean>;
   setRemindersEnabled(enabled: boolean): Promise<boolean>;
+  /** Project the Tablero last showed; null is "General" (CP-04-12). */
+  getBoardProject(): Promise<number | null>;
+  setBoardProject(projectId: number | null): Promise<number | null>;
   /**
    * Exports everything as a ZIP of open formats (RF-11). Main opens the save dialog; the
    * renderer sends nothing and only gets the outcome.

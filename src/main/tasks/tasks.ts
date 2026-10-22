@@ -357,7 +357,7 @@ export function createProject(
   const existing = db
     .prepare('SELECT id, name FROM projects WHERE name = ? COLLATE NOCASE')
     .get(checked.name) as Project | undefined;
-  if (existing) return { ok: true, project: existing };
+  if (existing) return { ok: false, error: 'duplicate_project' };
   const info = db
     .prepare('INSERT INTO projects (name, created_at) VALUES (?, ?)')
     .run(checked.name, now.toISOString());
