@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { isBoardSelection, parseBoardSelection, type BoardSelection } from '../../shared/board';
 
 const REMINDERS_ENABLED = 'reminders.enabled';
 const BOARD_PROJECT = 'board.project';
@@ -19,23 +20,23 @@ export function setRemindersEnabled(db: Database.Database, enabled: unknown): bo
   return enabled;
 }
 
-/** Id of the project the Tablero last showed, or null for "General". */
-export function getBoardProject(db: Database.Database): number | null {
+/** The board the Tablero last showed; a missing or corrupt setting is "General". */
+export function getBoardProject(db: Database.Database): BoardSelection {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(BOARD_PROJECT) as
     { value: string } | undefined;
-  const id = row ? Number(row.value) : NaN;
-  return Number.isInteger(id) ? id : null;
+  return parseBoardSelection(row?.value);
 }
 
-/** Remembers the chosen board; anything but an integer id or null is rejected. Returns the stored value. */
-export function setBoardProject(db: Database.Database, id: unknown): number | null {
-  if (id !== null && !Number.isInteger(id)) throw new Error('Invalid board project');
-  if (id === null) {
+/** Remembers the chosen board; anything but 'general', 'loose' or a project id is rejected. Returns the stored value. */
+export function setBoardProject(db: Database.Database, selection: unknown): BoardSelection {
+  if (!isBoardSelection(selection)) throw new Error('Invalid board selection');
+  if (selection === 'general') {
     db.prepare('DELETE FROM settings WHERE key = ?').run(BOARD_PROJECT);
-    return null;
+    return selection;
   }
+  const value = selection === 'loose' ? 'loose' : String(selection.projectId);
   db.prepare(
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
-  ).run(BOARD_PROJECT, String(id));
-  return id as number;
+  ).run(BOARD_PROJECT, value);
+  return selection;
 }

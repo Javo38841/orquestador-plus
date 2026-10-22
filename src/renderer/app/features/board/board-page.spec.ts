@@ -1,10 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { TranslocoTestingModule } from '@jsverse/transloco';
+import type { BoardSelection } from '../../../../shared/board';
 import type { OrquestadorApi } from '../../../../shared/ipc';
 import type { ProjectResult, Task, TaskResult } from '../../../../shared/tasks';
 import { PROJECT_NAME_MAX_LENGTH } from '../../../../shared/tasks';
 import { DESKTOP_API } from '../../core/desktop-api';
 import { TRANSLATIONS } from '../../i18n/transloco-loader';
+import { TasksStore } from '../tasks/tasks.store';
 import { BoardPage } from './board-page';
 
 const task = (id: number, extra: Partial<Task> = {}): Task => ({
@@ -30,7 +32,7 @@ const old = () => new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
 
 interface Options {
   stored?: { id: number; name: string }[];
-  board?: number | null;
+  board?: BoardSelection;
   create?: (name: string) => Promise<ProjectResult>;
 }
 
@@ -39,7 +41,7 @@ async function render(stored: Task[], options: Options = {}) {
     { id: 1, name: 'api' },
     { id: 2, name: 'web' },
   ];
-  const setBoardProject = vi.fn(async (id: number | null) => id);
+  const setBoardProject = vi.fn(async (selection: BoardSelection) => selection);
   const createProject = vi.fn(
     options.create ??
       (async (name: string): Promise<ProjectResult> => {
@@ -57,11 +59,11 @@ async function render(stored: Task[], options: Options = {}) {
     },
   }));
   const api = {
-    listTasks: async () => stored,
+    listTasks: async () => [...stored],
     listTags: async () => ['infra', 'ui'],
     listProjects: async () => [...projects],
     createProject,
-    getBoardProject: async () => options.board ?? null,
+    getBoardProject: async () => options.board ?? 'general',
     setBoardProject,
     setTaskStatus,
   } as unknown as OrquestadorApi;
@@ -213,10 +215,11 @@ describe('BoardPage', () => {
     const { select } = await render(sample());
     expect([...select().options].map((o) => o.textContent!.trim())).toEqual([
       'General',
+      'Sueltas',
       'api',
       'web',
     ]);
-    expect(select().value).toBe('');
+    expect(select().value).toBe('general');
   });
 
   it('CP-05-04: "General" shows every task including loose ones; a project shows only its own', async () => {
@@ -228,7 +231,7 @@ describe('BoardPage', () => {
     expect(titles('in_progress')).toEqual(['Api en curso']);
     expect(titles('done')).toEqual([]);
 
-    await pick('');
+    await pick('general');
     expect(titles('todo')).toContain('Suelta uno');
   });
 
@@ -238,7 +241,7 @@ describe('BoardPage', () => {
     await settle();
     expect(select().value).toBe('2');
     expect(titles('todo')).toEqual(['Web infra']);
-    expect(setBoardProject).toHaveBeenLastCalledWith(2);
+    expect(setBoardProject).toHaveBeenLastCalledWith({ projectId: 2 });
   });
 
   it('CP-05-05: project chips are gone; tag chips still filter and combine with the chosen board', async () => {
@@ -300,24 +303,112 @@ describe('BoardPage', () => {
   });
 
   it('CP-04-11: if the chosen project no longer exists the board goes back to "General"', async () => {
-    const { select, titles, setBoardProject } = await render(sample(), { board: 99 });
-    expect(select().value).toBe('');
+    const { select, titles, setBoardProject } = await render(sample(), {
+      board: { projectId: 99 },
+    });
+    expect(select().value).toBe('general');
     expect(titles('todo')).toContain('Suelta uno');
-    expect(setBoardProject).toHaveBeenCalledWith(null);
+    expect(setBoardProject).toHaveBeenCalledWith('general');
   });
 
   it('CP-04-12: the last chosen board is restored on open and every change is saved', async () => {
-    const { select, titles, pick, setBoardProject } = await render(sample(), { board: 2 });
+    const { select, titles, pick, setBoardProject } = await render(sample(), {
+      board: { projectId: 2 },
+    });
     expect(select().value).toBe('2');
     expect(titles('todo')).toEqual(['Web infra']);
     await pick('1');
-    expect(setBoardProject).toHaveBeenLastCalledWith(1);
-    await pick('');
-    expect(setBoardProject).toHaveBeenLastCalledWith(null);
+    expect(setBoardProject).toHaveBeenLastCalledWith({ projectId: 1 });
+    await pick('general');
+    expect(setBoardProject).toHaveBeenLastCalledWith('general');
   });
 
   it('CP-05-03: "Hecho" leaves out tasks completed more than 7 days ago', async () => {
     const { titles } = await render(sample());
     expect(titles('done')).toEqual(['Hecha reciente']);
+  });
+
+  describe('"Sueltas"', () => {
+    const loose = () => [
+      ...sample(),
+      task(7, { title: 'Suelta infra', tags: ['infra'] }),
+      task(8, { title: 'Suelta curso', status: 'in_progress' }),
+    ];
+    const counts = (el: HTMLElement) =>
+      [...el.querySelectorAll('[data-testid="board-count"]')].map((c) => c.textContent!.trim());
+
+    it('CP-04-13: the combo box offers General (default), Sueltas, then projects, even with no projects', async () => {
+      const { select } = await render(sample());
+      const values = [...select().options].map((o) => o.value);
+      expect(values).toEqual(['general', 'loose', '1', '2']);
+      expect(select().value).toBe('general');
+      TestBed.resetTestingModule();
+      const empty = await render(sample(), { stored: [] });
+      expect([...empty.select().options].map((o) => o.textContent!.trim())).toEqual([
+        'General',
+        'Sueltas',
+      ]);
+    });
+
+    it('CP-05-06: shows only tasks without a project, with the three columns and their counts', async () => {
+      const { el, pick, titles } = await render(loose());
+      await pick('loose');
+      expect(titles('todo')).toEqual(['Suelta uno', 'Suelta infra']);
+      expect(titles('in_progress')).toEqual(['Suelta curso']);
+      expect(titles('done')).toEqual(['Hecha reciente']);
+      expect(counts(el)).toEqual(['2', '1', '1']);
+    });
+
+    it('CP-05-07: tag chips combine with "Sueltas"', async () => {
+      const { settle, chip, pick, titles } = await render(loose());
+      await pick('loose');
+      chip('board-filter-tag', '#infra').click();
+      await settle();
+      expect(titles('todo')).toEqual(['Suelta infra']);
+      expect(titles('in_progress')).toEqual([]);
+    });
+
+    it('CP-05-08: with no loose tasks the three columns are empty with count 0', async () => {
+      const onlyProjects = [task(1, { projectId: 1, projectName: 'api' })];
+      const { el, pick, titles } = await render(onlyProjects);
+      await pick('loose');
+      expect(titles('todo')).toEqual([]);
+      expect(counts(el)).toEqual(['0', '0', '0']);
+    });
+
+    it('CP-05-09: a task that gets a project leaves "Sueltas" and one that loses it appears', async () => {
+      const tasks = loose();
+      const { fixture, pick, titles } = await render(tasks);
+      await pick('loose');
+      expect(titles('todo')).toContain('Suelta uno');
+      const store = TestBed.inject(TasksStore);
+      const i1 = tasks.findIndex((t) => t.id === 1);
+      const i4 = tasks.findIndex((t) => t.id === 4);
+      tasks[i1] = { ...tasks[i1]!, projectId: 1, projectName: 'api' };
+      tasks[i4] = { ...tasks[i4]!, projectId: null, projectName: null };
+      await store.load();
+      fixture.detectChanges();
+      expect(titles('todo')).not.toContain('Suelta uno');
+      expect(titles('todo')).toContain('Api infra');
+    });
+
+    it('CP-04-14: choosing "Sueltas" is saved and restored on open', async () => {
+      const first = await render(loose());
+      await first.pick('loose');
+      expect(first.setBoardProject).toHaveBeenLastCalledWith('loose');
+      TestBed.resetTestingModule();
+      const reopened = await render(loose(), { board: 'loose' });
+      expect(reopened.select().value).toBe('loose');
+      expect(reopened.titles('todo')).toEqual(['Suelta uno', 'Suelta infra']);
+    });
+
+    it('CP-04-16: "Sueltas" is an option of a native, labelled select, so the keyboard reaches it', async () => {
+      const { el, select } = await render(sample());
+      expect(select().tagName).toBe('SELECT');
+      expect(el.querySelector(`label[for="${select().id}"]`)).not.toBeNull();
+      const option = [...select().options].find((o) => o.value === 'loose')!;
+      expect(option.disabled).toBe(false);
+      expect(option.textContent!.trim()).toBe('Sueltas');
+    });
   });
 });

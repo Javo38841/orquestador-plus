@@ -9,7 +9,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
-import { BOARD_COLUMNS, buildBoard } from '../../../../shared/board';
+import { BOARD_COLUMNS, buildBoard, type BoardSelection } from '../../../../shared/board';
 import {
   isOverdue,
   localDate,
@@ -49,14 +49,17 @@ const COLUMN_KEYS: Record<TaskStatus, string> = {
         id="board-select"
         class="rounded-md border border-line bg-surface-raised px-2 py-1"
         data-testid="board-select"
-        [value]="projectFilter() === null ? '' : '' + projectFilter()"
+        [value]="selectValue()"
         (change)="choose($any($event.target).value)"
       >
-        <option value="" [selected]="projectFilter() === null">
+        <option value="general" [selected]="selectValue() === 'general'">
           {{ 'board.general' | transloco }}
         </option>
+        <option value="loose" [selected]="selectValue() === 'loose'">
+          {{ 'board.loose' | transloco }}
+        </option>
         @for (project of store.projects(); track project.id) {
-          <option [value]="project.id" [selected]="projectFilter() === project.id">
+          <option [value]="project.id" [selected]="selectedProjectId() === project.id">
             {{ project.name }}
           </option>
         }
@@ -189,8 +192,8 @@ const COLUMN_KEYS: Record<TaskStatus, string> = {
                 type="button"
                 class="w-full rounded px-2 py-1 text-left hover:bg-line"
                 data-testid="board-project-item"
-                [class]="projectFilter() === project.id ? 'text-accent' : ''"
-                [attr.aria-pressed]="projectFilter() === project.id"
+                [class]="selectedProjectId() === project.id ? 'text-accent' : ''"
+                [attr.aria-pressed]="selectedProjectId() === project.id"
                 (click)="choose('' + project.id)"
               >
                 {{ project.name }}
@@ -239,8 +242,16 @@ export class BoardPage implements OnInit {
   protected readonly store = inject(TasksStore);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly columns = BOARD_COLUMNS;
-  /** Null is "General" (all tasks); otherwise the id of the project being shown. */
-  readonly projectFilter = signal<number | null>(null);
+  /** The board being shown: "General", the loose tasks, or a single project. */
+  readonly boardSelection = signal<BoardSelection>('general');
+  protected readonly selectedProjectId = computed(() => {
+    const board = this.boardSelection();
+    return typeof board === 'object' ? board.projectId : null;
+  });
+  protected readonly selectValue = computed(() => {
+    const board = this.boardSelection();
+    return typeof board === 'object' ? '' + board.projectId : board;
+  });
   protected readonly draft = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly maxLength = PROJECT_NAME_MAX_LENGTH;
@@ -249,7 +260,7 @@ export class BoardPage implements OnInit {
   readonly tagFilter = signal<string | null>(null);
   protected readonly menuFor = signal<number | null>(null);
   protected readonly board = computed(() =>
-    buildBoard(this.store.tasks(), { projectId: this.projectFilter(), tag: this.tagFilter() }),
+    buildBoard(this.store.tasks(), { board: this.boardSelection(), tag: this.tagFilter() }),
   );
 
   ngOnInit(): void {
@@ -259,20 +270,24 @@ export class BoardPage implements OnInit {
   /** Loads the data and reopens the last board; a project that vanished falls back to "General". */
   private async restore(): Promise<void> {
     await this.store.load();
-    const saved = this.projectFilter() ?? (await this.api?.getBoardProject()) ?? null;
-    const exists = saved !== null && this.store.projects().some((p) => p.id === saved);
-    this.projectFilter.set(exists ? saved : null);
-    if (saved !== null && !exists) void this.api?.setBoardProject(null);
+    const current = this.boardSelection();
+    const saved =
+      current !== 'general' ? current : ((await this.api?.getBoardProject()) ?? 'general');
+    const missing =
+      typeof saved === 'object' && !this.store.projects().some((p) => p.id === saved.projectId);
+    this.boardSelection.set(missing ? 'general' : saved);
+    if (missing) void this.api?.setBoardProject('general');
     // A tag filter whose tag vanished would show an empty board.
     const tag = this.tagFilter();
     if (tag !== null && !this.store.tags().includes(tag)) this.tagFilter.set(null);
   }
 
-  /** Picks a board ('' is "General") and remembers it for the next launch. */
+  /** Picks a board ('general', 'loose' or a project id) and remembers it for the next launch. */
   protected choose(value: string): void {
-    const id = value === '' ? null : Number(value);
-    this.projectFilter.set(id);
-    void this.api?.setBoardProject(id);
+    const selection: BoardSelection =
+      value === 'general' || value === 'loose' ? value : { projectId: Number(value) };
+    this.boardSelection.set(selection);
+    void this.api?.setBoardProject(selection);
   }
 
   protected async createProject(): Promise<void> {

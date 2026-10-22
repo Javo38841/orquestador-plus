@@ -130,6 +130,7 @@
   "board": {
     "select": "Tablero",
     "general": "General",
+    "loose": "Sueltas",
     "projects": "Proyectos",
     "noProjects": "Todavía no tienes proyectos.",
     "newProject": "Nuevo proyecto",

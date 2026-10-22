@@ -7,6 +7,7 @@ import type { PortalLinkInput, PortalLinkResult, PortalLink, PortalStatus } from
 import type { ExportResult } from './export';
 import type { SearchResult } from './search';
 import type { NoteInput, NoteResult, NoteSummary, SectionSummary } from './wiki';
+import type { BoardSelection } from './board';
 import type { Project, ProjectResult, Task, TaskInput, TaskResult, TaskStatus } from './tasks';
 
 /**
@@ -150,8 +151,8 @@ export interface OrquestadorApi {
   getRemindersEnabled(): Promise<boolean>;
   setRemindersEnabled(enabled: boolean): Promise<boolean>;
   /** Project the Tablero last showed; null is "General" (CP-04-12). */
-  getBoardProject(): Promise<number | null>;
-  setBoardProject(projectId: number | null): Promise<number | null>;
+  getBoardProject(): Promise<BoardSelection>;
+  setBoardProject(selection: BoardSelection): Promise<BoardSelection>;
   /**
    * Exports everything as a ZIP of open formats (RF-11). Main opens the save dialog; the
    * renderer sends nothing and only gets the outcome.
