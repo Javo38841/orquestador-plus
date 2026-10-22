@@ -10,6 +10,20 @@ export interface NoteSummary {
   /** ISO-8601 UTC timestamps. */
   createdAt: string;
   updatedAt: string;
+  /** Folder under `wiki/` the note lives in; absent for notes in the root (one level only). */
+  section?: string;
+  /** Position inside its section (`order` in the frontmatter); absent = after the ordered ones. */
+  order?: number;
+  /** One-line summary from the frontmatter `description`. */
+  description?: string;
+}
+
+/** A folder of `wiki/` with notes in it. `_section.md` may give it a title and an order. */
+export interface SectionSummary {
+  /** Folder name; the stable reference to a section. */
+  name: string;
+  title: string;
+  order?: number;
 }
 
 /** A `[[link]]` found in a note. `slug` is null while no note has that title (pending). */
@@ -29,6 +43,8 @@ export interface Note extends NoteSummary {
 export interface NoteInput {
   title: string;
   content: string;
+  /** Folder to create the note in; omitted for the root. Ignored when editing. */
+  section?: string;
 }
 
 export type NoteError = 'empty' | 'too_long' | 'invalid' | 'duplicate' | 'not_found' | 'io';
@@ -43,9 +59,11 @@ export function noteKey(title: string): string {
 /** Trims and checks title and content. Content may be empty. */
 export function validateNoteInput(
   input: unknown,
-): { ok: true; title: string; content: string } | { ok: false; error: NoteError } {
+):
+  { ok: true; title: string; content: string; section?: string } | { ok: false; error: NoteError } {
   if (typeof input !== 'object' || input === null) return { ok: false, error: 'invalid' };
-  const { title, content } = input as Record<string, unknown>;
+  const { title, content, section } = input as Record<string, unknown>;
+  if (section !== undefined && !isValidSection(section)) return { ok: false, error: 'invalid' };
   if (typeof title !== 'string' || typeof content !== 'string') {
     return { ok: false, error: 'invalid' };
   }
@@ -55,7 +73,32 @@ export function validateNoteInput(
   // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f]/.test(trimmed)) return { ok: false, error: 'invalid' };
   if (content.length > NOTE_CONTENT_MAX_LENGTH) return { ok: false, error: 'too_long' };
-  return { ok: true, title: trimmed, content };
+  return section === undefined
+    ? { ok: true, title: trimmed, content }
+    : { ok: true, title: trimmed, content, section };
+}
+
+/** File that holds the title and order of a section; it is never a page. */
+export const SECTION_FILE = '_section.md';
+
+/** Longest `description` kept from a frontmatter. */
+export const NOTE_DESCRIPTION_MAX_LENGTH = 500;
+
+/** A section name coming over IPC or read from disk: one bare folder name, never a path. */
+export function isValidSection(section: unknown): section is string {
+  return (
+    typeof section === 'string' &&
+    section.length > 0 &&
+    section.length <= 255 &&
+    // eslint-disable-next-line no-control-regex
+    !/[\\/:*?"<>|\u0000-\u001f]/.test(section) &&
+    !section.includes('..') &&
+    section === section.trim() &&
+    !section.endsWith('.') &&
+    !section.startsWith('.') &&
+    !section.startsWith('_') &&
+    !RESERVED_NAMES.test(section)
+  );
 }
 
 /** A note reference coming over IPC: a bare file name, never a path. */
@@ -205,4 +248,68 @@ export function parseMarkdown(content: string): Block[] {
   if (code) blocks.push({ type: 'code', text: code.lines.join('\n') });
   flush();
   return blocks;
+}
+
+export interface WikiSection {
+  name: string;
+  title: string;
+  pages: NoteSummary[];
+}
+
+export interface WikiTree {
+  /** Notes in the root of `wiki/`: shown without a section heading. */
+  pages: NoteSummary[];
+  sections: WikiSection[];
+}
+
+const collator = new Intl.Collator('es', { sensitivity: 'base', numeric: true });
+
+/** Ordered items first (by `order`, then name); the rest after them, by name. */
+function byOrderThenName<T>(
+  items: T[],
+  order: (t: T) => number | undefined,
+  name: (t: T) => string,
+): T[] {
+  return [...items].sort((a, b) => {
+    const oa = order(a);
+    const ob = order(b);
+    if (oa !== undefined && ob !== undefined && oa !== ob) return oa - ob;
+    if ((oa === undefined) !== (ob === undefined)) return oa === undefined ? 1 : -1;
+    return collator.compare(name(a), name(b));
+  });
+}
+
+/**
+ * Builds the sidebar tree: sections and their pages by `order`, then by name. A note whose
+ * section is not in `sections` still gets one, titled with the folder name.
+ */
+export function buildWikiTree(notes: NoteSummary[], sections: SectionSummary[]): WikiTree {
+  const meta = new Map(sections.map((s) => [s.name, s] as const));
+  const grouped = new Map<string, NoteSummary[]>();
+  const root: NoteSummary[] = [];
+  for (const note of notes) {
+    if (note.section === undefined) root.push(note);
+    else grouped.set(note.section, [...(grouped.get(note.section) ?? []), note]);
+  }
+  const pageOrder = (pages: NoteSummary[]): NoteSummary[] =>
+    byOrderThenName(
+      pages,
+      (n) => n.order,
+      (n) => n.title,
+    );
+  const known: SectionSummary[] = [...grouped.keys()].map(
+    (name) => meta.get(name) ?? { name, title: name },
+  );
+  return {
+    pages: pageOrder(root),
+    sections: byOrderThenName(
+      known,
+      (s) => s.order,
+      (s) => s.title,
+    ).map((s) => ({
+      name: s.name,
+      title: s.title,
+      pages: pageOrder(grouped.get(s.name) ?? []),
+    })),
+  };
 }

@@ -21,20 +21,31 @@ export const EXPORT_TABLES: { name: string; orderBy: string }[] = [
 
 const WIKI_FOLDER = 'wiki';
 
+function markdownIn(dir: string): string[] {
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .flatMap((e) => (e.isFile() && e.name.endsWith('.md') ? [e.name] : []))
+    .sort();
+}
+
+/** Notes in the root and in the folders directly under `wiki/` (sections), with their paths. */
 function wikiEntries(wikiDir: string): ZipEntry[] {
-  let names: string[];
+  let folders: string[];
   try {
-    names = fs
+    folders = fs
       .readdirSync(wikiDir, { withFileTypes: true })
-      .flatMap((e) => (e.isFile() && e.name.endsWith('.md') ? [e.name] : []));
+      .flatMap((e) => (e.isDirectory() ? [e.name] : []))
+      .sort();
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
   }
-  return names.sort().map((name) => ({
-    name: `${WIKI_FOLDER}/${name}`,
-    data: fs.readFileSync(path.join(wikiDir, name)),
-  }));
+  return ['', ...folders].flatMap((folder) =>
+    markdownIn(path.join(wikiDir, folder)).map((name) => ({
+      name: [WIKI_FOLDER, folder, name].filter(Boolean).join('/'),
+      data: fs.readFileSync(path.join(wikiDir, folder, name)),
+    })),
+  );
 }
 
 /** Builds the ZIP of everything: tables read in one transaction (a consistent snapshot) and wiki/. */

@@ -39,7 +39,15 @@ import {
   setBoardProject,
   setRemindersEnabled,
 } from '../settings/settings';
-import { createNote, deleteNote, getNote, listNotes, updateNote, type Wiki } from '../wiki/wiki';
+import {
+  createNote,
+  deleteNote,
+  getNote,
+  listNotes,
+  listSections,
+  updateNote,
+  type Wiki,
+} from '../wiki/wiki';
 
 export function registerIpcHandlers(
   db: Database.Database | null,
@@ -111,7 +119,10 @@ export function registerIpcHandlers(
     if (!db) throw new Error('Database not available');
     return run({ db, dir: wikiDir });
   };
-  ipcMain.handle(IpcChannel.listNotes, () => withWiki(listNotes));
+  ipcMain.handle(IpcChannel.listNotes, (_event, section: unknown) =>
+    withWiki((w) => listNotes(w, section)),
+  );
+  ipcMain.handle(IpcChannel.listSections, () => withWiki(listSections));
   ipcMain.handle(IpcChannel.getNote, (_event, slug: unknown) => withWiki((w) => getNote(w, slug)));
   ipcMain.handle(IpcChannel.createNote, (_event, input: unknown) =>
     withWiki((w) => createNote(w, input)),

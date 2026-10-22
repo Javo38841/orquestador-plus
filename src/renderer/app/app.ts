@@ -5,7 +5,9 @@ import { AppInfoStore } from './core/app-info.store';
 import { CapturePanel } from './features/capture/capture-panel';
 import { BugsStore } from './features/bugs/bugs.store';
 import { InboxStore } from './features/inbox/inbox.store';
+import { SearchLauncher } from './features/search/search-launcher';
 import { SearchPalette } from './features/search/search-palette';
+import { WikiMode } from './features/wiki/wiki-mode';
 import { NAVIGATION } from './layout/navigation';
 
 @Component({
@@ -20,7 +22,9 @@ export class App {
   protected readonly bugs = inject(BugsStore);
   protected readonly navigation = NAVIGATION;
   protected readonly captureOpen = signal(false);
-  protected readonly searchOpen = signal(false);
+  protected readonly searchOpen = inject(SearchLauncher).open;
+  /** Wiki is shown full screen, without the app sidebar. */
+  protected readonly wikiMode = inject(WikiMode).active;
 
   /** Ctrl+Space opens quick capture from any section (RF-01). */
   protected onKeydown(event: KeyboardEvent): void {

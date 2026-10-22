@@ -3,14 +3,18 @@ import path from 'node:path';
 import type Database from 'better-sqlite3';
 import {
   extractLinks,
+  isValidSection,
   isValidSlug,
   noteKey,
+  NOTE_DESCRIPTION_MAX_LENGTH,
+  SECTION_FILE,
   slugFromTitle,
   validateNoteInput,
   type Note,
   type NoteError,
   type NoteResult,
   type NoteSummary,
+  type SectionSummary,
 } from '../../shared/wiki';
 
 /** The wiki: Markdown files in `dir` (source of truth) indexed in SQLite. */
@@ -25,6 +29,9 @@ interface NoteRow {
   title: string;
   created_at: string;
   updated_at: string;
+  section: string | null;
+  sort_order: number | null;
+  description: string | null;
 }
 
 class WikiError extends Error {
@@ -37,14 +44,49 @@ const EXTENSION = '.md';
 const TEMP_SUFFIX = '.tmp';
 
 function toSummary(row: NoteRow): NoteSummary {
-  return { slug: row.slug, title: row.title, createdAt: row.created_at, updatedAt: row.updated_at };
+  return {
+    slug: row.slug,
+    title: row.title,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    ...(row.section !== null && { section: row.section }),
+    ...(row.sort_order !== null && { order: row.sort_order }),
+    ...(row.description !== null && { description: row.description }),
+  };
 }
 
-function filePath(wiki: Wiki, slug: string): string {
-  const resolved = path.resolve(wiki.dir, slug + EXTENSION);
-  // Defense in depth: slugs are validated, but a note must never leave wiki/.
-  if (path.dirname(resolved) !== path.resolve(wiki.dir)) throw new WikiError('invalid');
+/** Folder of a section (or `wiki/` itself for null); never anywhere but directly under `wiki/`. */
+function sectionDir(wiki: Wiki, section: string | null): string {
+  const root = path.resolve(wiki.dir);
+  if (section === null) return root;
+  const dir = path.resolve(root, section);
+  // Defense in depth: names are validated, but a section must never leave wiki/.
+  if (!isValidSection(section) || path.dirname(dir) !== root) throw new WikiError('invalid');
+  return dir;
+}
+
+function filePath(wiki: Wiki, slug: string, section: string | null = null): string {
+  const dir = sectionDir(wiki, section);
+  const resolved = path.resolve(dir, slug + EXTENSION);
+  // Defense in depth: slugs are validated, but a note must never leave its folder.
+  if (path.dirname(resolved) !== dir) throw new WikiError('invalid');
   return resolved;
+}
+
+/** True if `file` exists and, once symlinks are resolved, is still inside `wiki/`. */
+function isInsideWiki(wiki: Wiki, file: string): boolean {
+  try {
+    const root = fs.realpathSync(wiki.dir);
+    const real = fs.realpathSync(file);
+    return real.startsWith(root + path.sep);
+  } catch {
+    return false;
+  }
+}
+
+/** `_section.md` holds the title of a folder, so a note can never take that name. */
+function isReservedName(slug: string): boolean {
+  return slug.toLowerCase() + EXTENSION === SECTION_FILE;
 }
 
 /** Temp file next to the target; its name never ends in `.md`, so it is never a note. */
@@ -72,13 +114,22 @@ function toLf(text: string): string {
   return text.replace(/\r\n?/g, '\n');
 }
 
+export interface NoteMeta {
+  order?: number | null;
+  description?: string | null;
+}
+
 export function serializeNote(
   title: string,
   createdAt: string,
   updatedAt: string,
   content: string,
+  meta: NoteMeta = {},
 ): string {
-  return `---\ntitle: ${JSON.stringify(title)}\ncreated: ${createdAt}\nupdated: ${updatedAt}\n---\n\n${toLf(content)}`;
+  const extra =
+    (meta.order == null ? '' : `order: ${meta.order}\n`) +
+    (meta.description == null ? '' : `description: ${JSON.stringify(meta.description)}\n`);
+  return `---\ntitle: ${JSON.stringify(title)}\n${extra}created: ${createdAt}\nupdated: ${updatedAt}\n---\n\n${toLf(content)}`;
 }
 
 export interface ParsedNote {
@@ -86,6 +137,9 @@ export interface ParsedNote {
   createdAt: string | null;
   updatedAt: string | null;
   content: string;
+  /** Absent when the frontmatter has no valid `order` / `description`. */
+  order?: number;
+  description?: string;
 }
 
 /** Reads the frontmatter written by `serializeNote`; tolerates files without it. */
@@ -115,11 +169,16 @@ export function parseNote(raw: string): ParsedNote {
     const value = read(name);
     return value !== null && !Number.isNaN(Date.parse(value)) ? value : null;
   };
+  const orderText = fields.get('order');
+  const order = orderText !== undefined && /^-?\d{1,9}$/.test(orderText) ? Number(orderText) : null;
+  const description = read('description')?.slice(0, NOTE_DESCRIPTION_MAX_LENGTH) ?? null;
   return {
     title: read('title'),
     createdAt: date('created'),
     updatedAt: date('updated'),
     content: text.slice(match[0].length).replace(/^\r?\n/, ''),
+    ...(order !== null && { order }),
+    ...(description !== null && { description }),
   };
 }
 
@@ -135,6 +194,7 @@ function findBySlug(db: Database.Database, slug: string): NoteRow | undefined {
 
 /** True if another note (not `selfId`) already uses this title or file name. */
 function conflicts(wiki: Wiki, selfId: number, slug: string, key: string): boolean {
+  if (isReservedName(slug)) return true;
   const clash = wiki.db
     .prepare('SELECT 1 FROM notes WHERE id != ? AND (title_key = ? OR slug = ? COLLATE NOCASE)')
     .get(selfId, key, slug);
@@ -146,10 +206,36 @@ function failure(error: unknown): { ok: false; error: NoteError } {
   return { ok: false, error: 'io' };
 }
 
-/** Notes sorted by title. */
-export function listNotes(wiki: Wiki): NoteSummary[] {
-  const rows = wiki.db.prepare('SELECT * FROM notes ORDER BY title_key').all() as NoteRow[];
+/**
+ * Notes sorted by title. With `section`, only the notes of that folder; a name that is not a
+ * valid folder name lists nothing.
+ */
+export function listNotes(wiki: Wiki, section?: unknown): NoteSummary[] {
+  if (section === undefined) {
+    const rows = wiki.db.prepare('SELECT * FROM notes ORDER BY title_key').all() as NoteRow[];
+    return rows.map(toSummary);
+  }
+  if (!isValidSection(section)) return [];
+  const rows = wiki.db
+    .prepare('SELECT * FROM notes WHERE section = ? ORDER BY title_key')
+    .all(section) as NoteRow[];
   return rows.map(toSummary);
+}
+
+/** Folders that hold at least one note, with the title and order from their `_section.md`. */
+export function listSections(wiki: Wiki): SectionSummary[] {
+  const rows = wiki.db
+    .prepare(
+      `SELECT DISTINCT n.section AS name, COALESCE(s.title, n.section) AS title, s.sort_order AS sort_order
+       FROM notes n LEFT JOIN note_sections s ON s.name = n.section
+       WHERE n.section IS NOT NULL ORDER BY title COLLATE NOCASE`,
+    )
+    .all() as { name: string; title: string; sort_order: number | null }[];
+  return rows.map((r) => ({
+    name: r.name,
+    title: r.title,
+    ...(r.sort_order !== null && { order: r.sort_order }),
+  }));
 }
 
 export function getNote(wiki: Wiki, slug: unknown): NoteResult {
@@ -158,7 +244,9 @@ export function getNote(wiki: Wiki, slug: unknown): NoteResult {
   if (!row) return { ok: false, error: 'not_found' };
   let text: string;
   try {
-    text = fs.readFileSync(filePath(wiki, row.slug), 'utf8');
+    const file = filePath(wiki, row.slug, row.section);
+    if (!isInsideWiki(wiki, file)) return { ok: false, error: 'not_found' };
+    text = fs.readFileSync(file, 'utf8');
   } catch {
     return { ok: false, error: 'not_found' };
   }
@@ -195,18 +283,21 @@ export function createNote(wiki: Wiki, input: unknown, now: Date = new Date()): 
   const slug = slugFromTitle(checked.title);
   const key = noteKey(checked.title);
   const stamp = now.toISOString();
+  const section = checked.section ?? null;
 
   try {
-    fs.mkdirSync(wiki.dir, { recursive: true });
+    const dir = sectionDir(wiki, section);
     wiki.db.transaction(() => {
       if (conflicts(wiki, 0, slug, key)) throw new WikiError('duplicate');
       const info = wiki.db
         .prepare(
-          'INSERT INTO notes (slug, title, title_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+          'INSERT INTO notes (slug, title, title_key, created_at, updated_at, section) VALUES (?, ?, ?, ?, ?, ?)',
         )
-        .run(slug, checked.title, key, stamp, stamp);
+        .run(slug, checked.title, key, stamp, stamp, section);
       indexLinks(wiki.db, Number(info.lastInsertRowid), toLf(checked.content));
-      const target = filePath(wiki, slug);
+      const target = filePath(wiki, slug, section);
+      fs.mkdirSync(dir, { recursive: true });
+      if (section !== null && !isInsideWiki(wiki, dir)) throw new WikiError('invalid');
       // A file left over without index entry also counts as taken.
       if (fs.existsSync(target)) throw new WikiError('duplicate');
       writeFileAtomic(target, serializeNote(checked.title, stamp, stamp, checked.content));
@@ -254,8 +345,8 @@ export function updateNote(
   try {
     wiki.db.transaction(() => {
       if (conflicts(wiki, current.id, nextSlug, key)) throw new WikiError('duplicate');
-      const target = filePath(wiki, nextSlug);
-      sameFile = isSameFile(filePath(wiki, current.slug), target);
+      const target = filePath(wiki, nextSlug, current.section);
+      sameFile = isSameFile(filePath(wiki, current.slug, current.section), target);
       if (nextSlug !== current.slug && !sameFile && fs.existsSync(target)) {
         throw new WikiError('duplicate');
       }
@@ -265,14 +356,19 @@ export function updateNote(
       indexLinks(wiki.db, current.id, checked.content);
       writeFileAtomic(
         target,
-        serializeNote(checked.title, current.created_at, stamp, checked.content),
+        serializeNote(checked.title, current.created_at, stamp, checked.content, {
+          order: current.sort_order,
+          description: current.description,
+        }),
       );
       written = true;
-      if (nextSlug !== current.slug && !sameFile) fs.rmSync(filePath(wiki, current.slug));
+      if (nextSlug !== current.slug && !sameFile) {
+        fs.rmSync(filePath(wiki, current.slug, current.section));
+      }
     })();
   } catch (error) {
     if (written && nextSlug !== current.slug && !sameFile)
-      fs.rmSync(filePath(wiki, nextSlug), { force: true });
+      fs.rmSync(filePath(wiki, nextSlug, current.section), { force: true });
     return failure(error);
   }
   return getNote(wiki, nextSlug);
@@ -285,7 +381,7 @@ export function deleteNote(wiki: Wiki, slug: unknown): boolean {
   if (!row) return false;
   wiki.db.transaction(() => {
     wiki.db.prepare('DELETE FROM notes WHERE id = ?').run(row.id);
-    fs.rmSync(filePath(wiki, row.slug), { force: true });
+    fs.rmSync(filePath(wiki, row.slug, row.section), { force: true });
   })();
   return true;
 }
@@ -303,33 +399,81 @@ function removeOrphanTempFiles(dir: string): void {
   }
 }
 
+interface FoundFile {
+  slug: string;
+  section: string | null;
+}
+
+/** Page files of one folder of `wiki/`; symlinks and `_section.md` are not pages. */
+function pageFiles(dir: string, section: string | null): FoundFile[] {
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .filter(
+      (e) =>
+        e.isFile() &&
+        e.name.toLowerCase().endsWith(EXTENSION) &&
+        e.name.toLowerCase() !== SECTION_FILE,
+    )
+    .map((e) => e.name.slice(0, -EXTENSION.length))
+    .filter((slug) => isValidSlug(slug))
+    .sort()
+    .map((slug) => ({ slug, section }));
+}
+
 /**
  * Rebuilds the whole index from the files in `wiki/` (ADR-001): run at startup, so a
- * deleted `datos.db` loses nothing. A file that cannot be read, or whose title or name clashes
- * with an earlier one, is left out of the index (and untouched on disk).
+ * deleted `datos.db` loses nothing. Notes in the root have no section; each folder directly under
+ * `wiki/` is a section (deeper folders and symlinks are ignored). A file that cannot be read,
+ * or whose title or name clashes with an earlier one, is left out of the index (and untouched on disk).
  */
 export function rebuildIndex(wiki: Wiki): number {
   fs.mkdirSync(wiki.dir, { recursive: true });
   removeOrphanTempFiles(wiki.dir);
-  const names = fs
+  const folders = fs
     .readdirSync(wiki.dir, { withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(EXTENSION))
-    .map((e) => e.name.slice(0, -EXTENSION.length))
-    .filter((slug) => isValidSlug(slug))
+    .filter((e) => e.isDirectory() && isValidSection(e.name))
+    .map((e) => e.name)
     .sort();
+  const found: FoundFile[] = pageFiles(wiki.dir, null);
+  const sections: SectionSummary[] = [];
+  for (const name of folders) {
+    const dir = sectionDir(wiki, name);
+    removeOrphanTempFiles(dir);
+    const files = pageFiles(dir, name);
+    if (files.length === 0) continue; // an empty folder is not a section
+    found.push(...files);
+    let meta: ParsedNote | null = null;
+    try {
+      const file = path.join(dir, SECTION_FILE);
+      if (isInsideWiki(wiki, file)) meta = parseNote(fs.readFileSync(file, 'utf8'));
+    } catch {
+      // a section without a readable _section.md is titled with its folder name
+    }
+    sections.push({
+      name,
+      title: meta?.title ?? name,
+      ...(meta?.order !== undefined && { order: meta.order }),
+    });
+  }
 
   return wiki.db.transaction(() => {
     wiki.db.prepare('DELETE FROM notes').run();
+    wiki.db.prepare('DELETE FROM note_sections').run();
+    const insertSection = wiki.db.prepare(
+      'INSERT INTO note_sections (name, title, sort_order) VALUES (?, ?, ?)',
+    );
+    for (const s of sections) insertSection.run(s.name, s.title, s.order ?? null);
     const insert = wiki.db.prepare(
-      'INSERT INTO notes (slug, title, title_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO notes (slug, title, title_key, created_at, updated_at, section, sort_order, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     );
     const slugs = new Set<string>();
     const keys = new Set<string>();
     let count = 0;
-    for (const slug of names) {
-      const file = filePath(wiki, slug);
+    for (const { slug, section } of found) {
+      const file = filePath(wiki, slug, section);
       let text: string;
       try {
+        if (!isInsideWiki(wiki, file)) continue;
         text = fs.readFileSync(file, 'utf8');
       } catch {
         continue; // an unreadable file must not abort the whole rebuild
@@ -348,6 +492,9 @@ export function rebuildIndex(wiki: Wiki): number {
         key,
         parsed.createdAt ?? mtime,
         parsed.updatedAt ?? parsed.createdAt ?? mtime,
+        section,
+        parsed.order ?? null,
+        parsed.description ?? null,
       );
       indexLinks(wiki.db, Number(info.lastInsertRowid), parsed.content);
       count++;
