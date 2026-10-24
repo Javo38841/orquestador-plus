@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { launchApp, type LaunchedApp } from './launch';
 
@@ -107,4 +109,20 @@ test('CP-08-72: a section and a page created from the sidebar survive a restart'
   const reopened = launched.page.getByTestId('wiki-section').filter({ hasText: 'Guías' });
   await expect(reopened.getByTestId('wiki-section-toggle')).toContainText('Guías');
   await expect(reopened.getByTestId('note-item')).toHaveText('Instalación');
+});
+
+test('CP-08-101: editing a note from the UI keeps the tags and source of its frontmatter', async () => {
+  const { page, dataDir } = launched;
+  await createNote(page, 'Con tags', 'uno');
+  const file = path.join(dataDir, 'wiki', 'Con tags.md');
+  const raw = fs.readFileSync(file, 'utf8');
+  fs.writeFileSync(file, raw.replace('created:', 'tags:\n  - a\n  - b\nsource: "x"\ncreated:'));
+  await page.getByTestId('note-edit').click();
+  await page.getByTestId('note-content').fill('dos');
+  await page.getByTestId('note-save').click();
+  await expect(page.getByTestId('note-view-title')).toHaveText('Con tags');
+
+  const saved = fs.readFileSync(file, 'utf8');
+  expect(saved).toContain('tags:\n  - a\n  - b\nsource: "x"\n');
+  expect(saved.endsWith('\n\ndos')).toBe(true);
 });
