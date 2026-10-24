@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { of } from 'rxjs';
 import { TranslocoTestingModule } from '@jsverse/transloco';
+import type { AttachmentImageResult, AttachmentResult } from '../../../../shared/attachments';
 import type { OrquestadorApi } from '../../../../shared/ipc';
 import type {
   Note,
@@ -69,6 +70,16 @@ async function render(
     createNote: vi.fn(async () => createResult),
     updateNote: vi.fn(async (): Promise<NoteResult> => ({ ok: true, note: noteA })),
     deleteNote: vi.fn(async () => true),
+    attachFile: vi.fn(async (): Promise<AttachmentResult> => ({
+      ok: true,
+      link: '![captura](A.assets/captura.png)',
+      name: 'captura.png',
+    })),
+    readAttachment: vi.fn(async (): Promise<AttachmentImageResult> => ({
+      ok: true,
+      dataUrl: 'data:image/png;base64,AAAA',
+    })),
+    openAttachment: vi.fn(async () => true),
     listSkippedFiles: vi.fn(async (): Promise<SkippedFile[]> => fixtures.skipped ?? []),
     openWikiFolder: vi.fn(async () => true),
     onWikiChanged: vi.fn((listener: () => void) => {
@@ -828,5 +839,177 @@ describe('WikiPage arriving from the global search', () => {
     expect(el.querySelector('[data-testid="note-view-title"]')?.textContent).toContain('Guia');
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(el.querySelector<HTMLElement>('[data-testid="wiki-scroll"]')?.scrollTop).toBe(0);
+  });
+});
+
+describe('WikiPage attachments', () => {
+  const withAttachments: Note = { ...noteA, attachments: 2 };
+  const file = (name: string, bytes = 3) =>
+    ({ name, size: bytes, arrayBuffer: async () => new ArrayBuffer(bytes) }) as unknown as File;
+
+  const startEditing = async (r: Awaited<ReturnType<typeof render>>) => {
+    await r.click('note-item', 0);
+    await r.click('note-edit');
+    const field = r.el.querySelector('[data-testid="note-content"]') as HTMLTextAreaElement;
+    return field;
+  };
+  const content = (field: HTMLTextAreaElement) => field.value;
+
+  it('CP-08-122: pasting an image from the clipboard attaches it and inserts the link at the cursor', async () => {
+    const r = await render();
+    const field = await startEditing(r);
+    field.setSelectionRange(5, 5);
+    const paste = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, 'clipboardData', { value: { files: [file('image.png')] } });
+
+    field.dispatchEvent(paste);
+    await r.settle();
+    await new Promise((resolve) => setTimeout(resolve));
+    await r.settle();
+
+    expect(paste.defaultPrevented).toBe(true);
+    expect(r.api.attachFile).toHaveBeenCalledWith({
+      slug: 'A',
+      name: 'image.png',
+      data: expect.any(Uint8Array),
+    });
+    expect(content(field)).toBe('Mira ![captura](A.assets/captura.png)[[B]] y [[Fantasma]]');
+  });
+
+  it('CP-08-122: pasting plain text is left alone', async () => {
+    const r = await render();
+    const field = await startEditing(r);
+    const paste = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, 'clipboardData', { value: { files: [] } });
+
+    field.dispatchEvent(paste);
+
+    expect(paste.defaultPrevented).toBe(false);
+    expect(r.api.attachFile).not.toHaveBeenCalled();
+  });
+
+  it('CP-08-122: dropping a file attaches it and inserts the link', async () => {
+    const r = await render();
+    const field = await startEditing(r);
+    field.setSelectionRange(0, 0);
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      value: { files: [file('manual.pdf')], types: ['Files'] },
+    });
+
+    field.dispatchEvent(drop);
+    await r.settle();
+    await new Promise((resolve) => setTimeout(resolve));
+    await r.settle();
+
+    expect(drop.defaultPrevented).toBe(true);
+    expect(r.api.attachFile).toHaveBeenCalledWith(expect.objectContaining({ name: 'manual.pdf' }));
+    expect(content(field).startsWith('![captura](A.assets/captura.png)Mira')).toBe(true);
+  });
+
+  it('CP-08-122: the "Adjuntar" button picks files and inserts the link', async () => {
+    const r = await render();
+    const field = await startEditing(r);
+    field.setSelectionRange(0, 0);
+    const input = r.el.querySelector('[data-testid="note-attach-input"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [file('captura.png')], configurable: true });
+
+    input.dispatchEvent(new Event('change'));
+    await r.settle();
+    await new Promise((resolve) => setTimeout(resolve));
+    await r.settle();
+
+    expect(r.api.attachFile).toHaveBeenCalledTimes(1);
+    expect(content(field)).toContain('![captura](A.assets/captura.png)');
+    expect(r.el.querySelector('[data-testid="note-attach"]')?.textContent).toContain('Adjuntar');
+  });
+
+  it('CP-08-120: a file over the limit is refused in Spanish before it reaches main', async () => {
+    const r = await render();
+    const field = await startEditing(r);
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      value: { files: [file('grande.png', 10 * 1024 * 1024 + 1)], types: ['Files'] },
+    });
+
+    field.dispatchEvent(drop);
+    await r.settle();
+
+    expect(r.api.attachFile).not.toHaveBeenCalled();
+    expect(r.el.querySelector('[data-testid="attach-error"]')?.textContent).toContain('10 MB');
+    expect(content(field)).toBe('Mira [[B]] y [[Fantasma]]');
+  });
+
+  it('shows the error main returns and inserts nothing', async () => {
+    const r = await render();
+    const field = await startEditing(r);
+    r.api.attachFile.mockResolvedValueOnce({ ok: false, error: 'too_large' });
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      value: { files: [file('a.png')], types: ['Files'] },
+    });
+
+    field.dispatchEvent(drop);
+    await r.settle();
+
+    expect(r.el.querySelector('[data-testid="attach-error"]')?.textContent).toContain('10 MB');
+    expect(content(field)).toBe('Mira [[B]] y [[Fantasma]]');
+  });
+
+  it('a new, unsaved note cannot take attachments yet', async () => {
+    const r = await render();
+    await r.click('new-note');
+    const button = r.el.querySelector('[data-testid="note-attach"]') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    const field = r.el.querySelector('[data-testid="note-content"]') as HTMLTextAreaElement;
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      value: { files: [file('a.png')], types: ['Files'] },
+    });
+
+    field.dispatchEvent(drop);
+    await r.settle();
+
+    expect(r.api.attachFile).not.toHaveBeenCalled();
+    expect(r.el.querySelector('[data-testid="attach-error"]')?.textContent).toContain(
+      'Guarda la nota',
+    );
+  });
+
+  it('CP-08-128: deleting a note with attachments asks whether to delete them; "yes" deletes them', async () => {
+    const r = await render({ ok: true, note: noteB }, { notesByContent: { A: withAttachments } });
+    await r.click('note-item', 0);
+    await r.click('note-delete');
+    await r.click('note-delete-confirm');
+
+    expect(r.api.deleteNote).not.toHaveBeenCalled();
+    expect(r.el.querySelector('[data-testid="attachments-ask"]')?.textContent).toContain(
+      'adjuntos',
+    );
+
+    await r.click('attachments-delete-yes');
+    expect(r.api.deleteNote).toHaveBeenCalledWith('A', true);
+    expect(r.el.querySelector('[data-testid="note-view"]')).toBeNull();
+  });
+
+  it('CP-08-128: answering "no" deletes the note and keeps the attachments', async () => {
+    const r = await render({ ok: true, note: noteB }, { notesByContent: { A: withAttachments } });
+    await r.click('note-item', 0);
+    await r.click('note-delete');
+    await r.click('note-delete-confirm');
+
+    await r.click('attachments-delete-no');
+
+    expect(r.api.deleteNote).toHaveBeenCalledWith('A');
+  });
+
+  it('CP-08-129: deleting a note without attachments does not ask about them', async () => {
+    const r = await render();
+    await r.click('note-item', 0);
+    await r.click('note-delete');
+    await r.click('note-delete-confirm');
+
+    expect(r.el.querySelector('[data-testid="attachments-ask"]')).toBeNull();
+    expect(r.api.deleteNote).toHaveBeenCalledWith('A');
   });
 });

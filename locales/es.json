@@ -345,6 +345,24 @@
       "duplicate": "Ya existe una sección con ese nombre",
       "io": "No se pudo crear la carpeta de la sección"
     },
+    "attach": {
+      "button": "Adjuntar",
+      "hint": "También puedes pegar o arrastrar imágenes y archivos al texto",
+      "saveFirst": "Guarda la nota para poder adjuntar archivos",
+      "imageMissing": "imagen no encontrada",
+      "imageBlocked": "imagen bloqueada",
+      "linkBlocked": "Este enlace no se abre desde la nota",
+      "deleteAsk": "Esta nota tiene archivos adjuntos. ¿Borrarlos también?",
+      "deleteYes": "Sí, borrar adjuntos",
+      "deleteNo": "No, conservarlos",
+      "errors": {
+        "invalid": "No se pudo adjuntar el archivo",
+        "empty": "El archivo está vacío",
+        "tooLarge": "El archivo supera el límite de 10 MB por adjunto",
+        "notFound": "La nota ya no existe",
+        "io": "No se pudo guardar el adjunto"
+      }
+    },
     "sidebar": "Secciones de la wiki",
     "breadcrumbs": "Ruta de la página",
     "callout": {
