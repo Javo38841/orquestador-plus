@@ -1,10 +1,20 @@
-import { Component, computed, ElementRef, inject, OnInit, signal, viewChild } from '@angular/core';
+import {
+  Component,
+  computed,
+  DestroyRef,
+  ElementRef,
+  inject,
+  OnInit,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import {
   extractToc,
   pageNavigation,
   type NoteError,
   type SectionError,
+  type SkippedReason,
 } from '../../../../shared/wiki';
 import { SearchLauncher } from '../search/search-launcher';
 import { NoteBody } from './note-body';
@@ -25,7 +35,14 @@ export const NOTE_ERROR_KEYS: Record<NoteError, string> = {
   invalid: 'wiki.errors.invalid',
   duplicate: 'wiki.errors.duplicate',
   not_found: 'wiki.errors.notFound',
+  conflict: 'wiki.errors.conflict',
   io: 'wiki.errors.io',
+};
+
+export const SKIPPED_REASON_KEYS: Record<SkippedReason, string> = {
+  duplicate: 'wiki.skipped.reasons.duplicate',
+  unreadable: 'wiki.skipped.reasons.unreadable',
+  invalid_name: 'wiki.skipped.reasons.invalid_name',
 };
 
 interface Draft {
@@ -171,6 +188,46 @@ interface Draft {
             </button>
           </form>
         }
+        <button
+          type="button"
+          class="w-full rounded-md border border-line px-3 py-1.5 text-left text-sm text-muted outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+          data-testid="open-folder"
+          (click)="store.openFolder()"
+        >
+          {{ 'wiki.openFolder' | transloco }}
+        </button>
+        @if (store.skipped().length > 0) {
+          <div
+            class="rounded-md border border-warn bg-surface-raised px-3 py-2 text-sm"
+            data-testid="skipped-notice"
+          >
+            <button
+              type="button"
+              class="w-full text-left text-warn outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              data-testid="skipped-toggle"
+              [attr.aria-expanded]="showSkipped()"
+              (click)="showSkipped.set(!showSkipped())"
+            >
+              {{
+                (store.skipped().length === 1
+                  ? 'wiki.skipped.summaryOne'
+                  : 'wiki.skipped.summaryMany'
+                ) | transloco: { count: store.skipped().length }
+              }}
+            </button>
+            @if (showSkipped()) {
+              <p class="mt-2 text-xs text-muted">{{ 'wiki.skipped.title' | transloco }}</p>
+              <ul class="mt-1 space-y-1 text-xs" data-testid="skipped-list">
+                @for (item of store.skipped(); track item.file) {
+                  <li data-testid="skipped-item">
+                    <span class="font-mono break-all">{{ item.file }}</span>
+                    <span class="block text-muted">{{ reasonKey(item.reason) | transloco }}</span>
+                  </li>
+                }
+              </ul>
+            }
+          </div>
+        }
         @if (store.notes().length === 0 && store.sections().length === 0) {
           <p
             class="rounded-lg border border-line bg-surface px-4 py-3 text-sm text-muted"
@@ -234,6 +291,31 @@ interface Draft {
                 </div>
               </div>
             </div>
+            @if (conflict()) {
+              <div
+                class="flex flex-wrap items-center gap-3 rounded-lg border border-warn bg-surface-raised px-4 py-3 text-sm"
+                role="alert"
+                data-testid="save-conflict"
+              >
+                <span class="text-warn">{{ 'wiki.conflict.title' | transloco }}</span>
+                <button
+                  type="button"
+                  class="rounded-md border border-warn px-3 py-1 text-warn"
+                  data-testid="conflict-keep-mine"
+                  (click)="save(true)"
+                >
+                  {{ 'wiki.conflict.keepMine' | transloco }}
+                </button>
+                <button
+                  type="button"
+                  class="rounded-md border border-line px-3 py-1"
+                  data-testid="conflict-reload"
+                  (click)="reloadFromDisk()"
+                >
+                  {{ 'wiki.conflict.reloadDisk' | transloco }}
+                </button>
+              </div>
+            }
             @if (error(); as key) {
               <p class="text-sm text-warn" role="alert" data-testid="note-error">
                 {{ key | transloco }}
@@ -257,6 +339,14 @@ interface Draft {
               </button>
             </div>
           </form>
+        } @else if (store.gone()) {
+          <p
+            class="rounded-lg border border-warn bg-surface px-5 py-4 text-sm text-warn"
+            role="status"
+            data-testid="note-gone"
+          >
+            {{ 'wiki.gone' | transloco }}
+          </p>
         } @else if (store.current(); as note) {
           <article data-testid="note-view">
             <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -439,6 +529,8 @@ export class WikiPage implements OnInit {
   protected readonly draft = signal<Draft | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly confirmingDelete = signal(false);
+  protected readonly conflict = signal(false);
+  protected readonly showSkipped = signal(false);
   protected readonly creatingSection = signal(false);
   protected readonly sectionError = signal<string | null>(null);
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
@@ -462,8 +554,16 @@ export class WikiPage implements OnInit {
     return d.title !== (current?.title ?? '') || d.content !== (current?.content ?? '');
   });
 
+  private readonly destroyRef = inject(DestroyRef);
+
   ngOnInit(): void {
     void this.store.load();
+    // The wiki can be edited with other tools while it is open (RF-08).
+    this.destroyRef.onDestroy(this.store.watchExternalChanges(() => this.editing()));
+  }
+
+  protected reasonKey(reason: SkippedReason): string {
+    return SKIPPED_REASON_KEYS[reason];
   }
 
   /** Runs `action`, asking first if there are unsaved changes. */
@@ -564,6 +664,7 @@ export class WikiPage implements OnInit {
   private beginEdit(draft: Draft): void {
     this.confirmingDelete.set(false);
     this.error.set(null);
+    this.conflict.set(false);
     this.draft.set(draft);
     this.editing.set(true);
   }
@@ -572,6 +673,7 @@ export class WikiPage implements OnInit {
     this.editing.set(false);
     this.draft.set(null);
     this.error.set(null);
+    this.conflict.set(false);
     this.confirmingDelete.set(false);
     this.pending.set(null);
   }
@@ -609,7 +711,7 @@ export class WikiPage implements OnInit {
     this.error.set(null);
   }
 
-  protected async save(): Promise<void> {
+  protected async save(overwrite = false): Promise<void> {
     const d = this.draft();
     if (!d) return;
     let failure: NoteError | null;
@@ -617,9 +719,13 @@ export class WikiPage implements OnInit {
       failure =
         this.editingSlug === null
           ? await this.store.create(d)
-          : await this.store.save(this.editingSlug, d);
+          : await this.store.save(this.editingSlug, d, overwrite);
     } catch {
       this.error.set(NOTE_ERROR_KEYS.io);
+      return;
+    }
+    if (failure === 'conflict') {
+      this.conflict.set(true);
       return;
     }
     if (failure) {
@@ -627,6 +733,13 @@ export class WikiPage implements OnInit {
       return;
     }
     this.stopEditing();
+  }
+
+  /** "Recargar la del disco": drops my edit and shows what the file holds now. */
+  protected reloadFromDisk(): void {
+    const slug = this.editingSlug;
+    this.stopEditing();
+    if (slug !== null) void this.store.openNote(slug);
   }
 
   protected async remove(): Promise<void> {
