@@ -118,6 +118,13 @@
     "pause": "Pausar",
     "resume": "Reanudar",
     "reset": "Reiniciar",
+    "minutesLabel": "Duración en minutos",
+    "minutesUnit": "min",
+    "decrease": "Restar {{n}} minutos",
+    "increase": "Sumar {{n}} minutos",
+    "shortcut": "{{n}} min",
+    "extend": "+{{n}} min",
+    "minutesInvalid": "Escribe un número entero de {{min}} a {{max}}.",
     "needsTask": "Elige una tarea para iniciar el enfoque.",
     "finished": "¡Sesión de enfoque terminada!",
     "state": {

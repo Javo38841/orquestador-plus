@@ -7,10 +7,12 @@ import { openDatabase } from '../db/database';
 import {
   getBoardPanelOpen,
   getBoardProject,
+  getFocusMinutes,
   getRemindersEnabled,
   getSnippetsView,
   setBoardPanelOpen,
   setBoardProject,
+  setFocusMinutes,
   setRemindersEnabled,
   setSnippetsView,
 } from './settings';
@@ -116,5 +118,26 @@ describe('settings', () => {
     expect(getSnippetsView(db)).toBe('list');
     db.prepare('UPDATE settings SET value = ? WHERE key = ?').run('table', 'snippets.view');
     expect(getSnippetsView(db)).toBe('grid');
+  });
+
+  it('CP-17-19: the focus duration is stored, and anything but an integer 1-180 is rejected', () => {
+    expect(setFocusMinutes(db, 45)).toBe(45);
+    expect(getFocusMinutes(db)).toBe(45);
+    for (const bad of [0, 181, -5, 1.5, NaN, '30', null, undefined, true]) {
+      expect(() => setFocusMinutes(db, bad)).toThrow();
+    }
+    expect(setFocusMinutes(db, 1)).toBe(1);
+    expect(setFocusMinutes(db, 180)).toBe(180);
+    expect(getFocusMinutes(db)).toBe(180);
+  });
+
+  it('CP-17-20: the focus duration is 25 when nothing is stored or the value is invalid', () => {
+    expect(getFocusMinutes(db)).toBe(25);
+    for (const bad of ['0', '999', 'abc', '', '2.5']) {
+      db.prepare(
+        'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
+      ).run('focus.minutes', bad);
+      expect(getFocusMinutes(db)).toBe(25);
+    }
   });
 });

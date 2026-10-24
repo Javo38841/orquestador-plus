@@ -1,8 +1,17 @@
 import { DOCUMENT } from '@angular/common';
 import { computed, DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
+import {
+  FOCUS_DEFAULT_MINUTES,
+  FOCUS_MAX_MINUTES,
+  FOCUS_MIN_MINUTES,
+  isFocusMinutes,
+} from '../../../../shared/focus';
+import { DESKTOP_API } from '../../core/desktop-api';
 import { TasksStore } from '../tasks/tasks.store';
 
-export const FOCUS_DURATION_MS = 25 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+/** Step of the −/+ buttons and of "+5 min". */
+export const FOCUS_STEP_MINUTES = 5;
 const TICK_MS = 250;
 
 export type FocusState = 'idle' | 'running' | 'paused' | 'finished';
@@ -25,12 +34,29 @@ export function formatClock(ms: number): string {
 export class FocusTimerService {
   private readonly tasksStore = inject(TasksStore);
   private readonly document = inject(DOCUMENT);
+  private readonly api = inject(DESKTOP_API);
+  private loaded = false;
   private endAt = 0;
   private handle: ReturnType<typeof setInterval> | null = null;
 
   readonly state = signal<FocusState>('idle');
   readonly taskId = signal<number | null>(null);
-  readonly remainingMs = signal(FOCUS_DURATION_MS);
+  /** Chosen duration in minutes (the saved preference). */
+  readonly durationMinutes = signal(FOCUS_DEFAULT_MINUTES);
+  /** Minutes added to the current session with "+5 min"; never saved. */
+  readonly extraMinutes = signal(0);
+  /** Length of the current session, extras included. */
+  readonly totalMs = computed(() => (this.durationMinutes() + this.extraMinutes()) * MINUTE_MS);
+  readonly remainingMs = signal(FOCUS_DEFAULT_MINUTES * MINUTE_MS);
+  /** The duration can only be edited while no session is running or paused. */
+  readonly canEditDuration = computed(
+    () => this.state() !== 'running' && this.state() !== 'paused',
+  );
+  readonly canExtend = computed(
+    () =>
+      !this.canEditDuration() &&
+      this.durationMinutes() + this.extraMinutes() + FOCUS_STEP_MINUTES <= FOCUS_MAX_MINUTES,
+  );
   /** Set when a start was refused because no task was chosen. */
   readonly needsTask = signal(false);
   /** Sessions that ran to the end since the app opened; drives "SESIÓN n DE 4". */
@@ -55,6 +81,56 @@ export class FocusTimerService {
     });
   }
 
+  /** Loads the saved duration once; a failure keeps the default. */
+  async load(): Promise<void> {
+    if (this.loaded || !this.api) return;
+    this.loaded = true;
+    try {
+      const minutes = await this.api.getFocusMinutes();
+      if (isFocusMinutes(minutes) && this.canEditDuration() && this.state() !== 'finished') {
+        this.durationMinutes.set(minutes);
+        this.remainingMs.set(minutes * MINUTE_MS);
+      }
+    } catch {
+      // Keep the default duration.
+    }
+  }
+
+  /**
+   * Chooses the duration for the next sessions and saves it. Ignored while a session runs
+   * or is paused, and for anything but an integer from 1 to 180. Returns whether it applied.
+   */
+  setDuration(minutes: number): boolean {
+    if (!this.canEditDuration() || !isFocusMinutes(minutes)) return false;
+    this.durationMinutes.set(minutes);
+    this.extraMinutes.set(0);
+    this.remainingMs.set(minutes * MINUTE_MS);
+    this.state.set('idle');
+    void this.api?.setFocusMinutes(minutes).catch(() => undefined);
+    return true;
+  }
+
+  /** Moves the duration by `delta` minutes, kept within 1 to 180. */
+  adjustDuration(delta: number): boolean {
+    const next = Math.min(
+      FOCUS_MAX_MINUTES,
+      Math.max(FOCUS_MIN_MINUTES, this.durationMinutes() + delta),
+    );
+    return this.setDuration(next);
+  }
+
+  /** Adds 5 minutes to the session in progress or paused, up to 180 in total. */
+  extend(): void {
+    if (!this.canExtend()) return;
+    if (this.state() === 'running') {
+      this.refresh();
+      if (this.state() !== 'running') return;
+      this.endAt += FOCUS_STEP_MINUTES * MINUTE_MS;
+    }
+    this.extraMinutes.update((m) => m + FOCUS_STEP_MINUTES);
+    this.remainingMs.update((ms) => ms + FOCUS_STEP_MINUTES * MINUTE_MS);
+  }
+
   select(id: number | null): void {
     this.taskId.set(id);
     if (id !== null) this.needsTask.set(false);
@@ -66,7 +142,8 @@ export class FocusTimerService {
       return false;
     }
     this.needsTask.set(false);
-    this.remainingMs.set(FOCUS_DURATION_MS);
+    this.extraMinutes.set(0);
+    this.remainingMs.set(this.durationMinutes() * MINUTE_MS);
     this.run();
     return true;
   }
@@ -86,7 +163,8 @@ export class FocusTimerService {
   /** Back to the full duration, stopped. Keeps the chosen task. */
   reset(): void {
     this.stopTicking();
-    this.remainingMs.set(FOCUS_DURATION_MS);
+    this.extraMinutes.set(0);
+    this.remainingMs.set(this.durationMinutes() * MINUTE_MS);
     this.state.set('idle');
   }
 

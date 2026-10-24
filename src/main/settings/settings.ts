@@ -1,11 +1,13 @@
 import type Database from 'better-sqlite3';
 import { isSnippetsView, type SnippetsView } from '../../shared/snippets';
+import { FOCUS_DEFAULT_MINUTES, isFocusMinutes } from '../../shared/focus';
 import { isBoardSelection, parseBoardSelection, type BoardSelection } from '../../shared/board';
 
 const REMINDERS_ENABLED = 'reminders.enabled';
 const BOARD_PROJECT = 'board.project';
 const BOARD_PANEL_OPEN = 'board.panelOpen';
 const SNIPPETS_VIEW = 'snippets.view';
+const FOCUS_MINUTES = 'focus.minutes';
 
 /** Task reminders notify unless the user turned them off (RF-18). */
 export function getRemindersEnabled(db: Database.Database): boolean {
@@ -74,4 +76,21 @@ export function setSnippetsView(db: Database.Database, view: unknown): SnippetsV
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
   ).run(SNIPPETS_VIEW, view);
   return view;
+}
+
+/** Enfoque duration in minutes; a missing or corrupt setting is 25. */
+export function getFocusMinutes(db: Database.Database): number {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(FOCUS_MINUTES) as
+    { value: string } | undefined;
+  const minutes = row === undefined ? NaN : Number(row.value);
+  return isFocusMinutes(minutes) ? minutes : FOCUS_DEFAULT_MINUTES;
+}
+
+/** Remembers the Enfoque duration; anything but an integer from 1 to 180 is rejected. Returns the stored value. */
+export function setFocusMinutes(db: Database.Database, minutes: unknown): number {
+  if (!isFocusMinutes(minutes)) throw new Error('Invalid focus duration');
+  db.prepare(
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
+  ).run(FOCUS_MINUTES, String(minutes));
+  return minutes;
 }

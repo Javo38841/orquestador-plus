@@ -69,6 +69,8 @@ const api: OrquestadorApi = {
   setBoardPanelOpen: (open) => ipcRenderer.invoke(IpcChannel.setBoardPanelOpen, open),
   getSnippetsView: () => ipcRenderer.invoke(IpcChannel.getSnippetsView),
   setSnippetsView: (view) => ipcRenderer.invoke(IpcChannel.setSnippetsView, view),
+  getFocusMinutes: () => ipcRenderer.invoke(IpcChannel.getFocusMinutes),
+  setFocusMinutes: (minutes) => ipcRenderer.invoke(IpcChannel.setFocusMinutes, minutes),
   exportAll: () => ipcRenderer.invoke(IpcChannel.exportAll),
 };
 
