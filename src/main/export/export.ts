@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
+import { ASSETS_SUFFIX } from '../../shared/attachments';
 import type { ExportResult } from '../../shared/export';
 import { toCsv, type CsvValue } from './csv';
 import { createZip, type ZipEntry } from './zip';
@@ -28,24 +29,42 @@ function markdownIn(dir: string): string[] {
     .sort();
 }
 
-/** Notes in the root and in the folders directly under `wiki/` (sections), with their paths. */
+/** Files of the `*.assets` folders of `dir` (attachments), as paths relative to `dir`. */
+function assetsIn(dir: string): string[] {
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .flatMap((e) => (e.isDirectory() && e.name.endsWith(ASSETS_SUFFIX) ? [e.name] : []))
+    .sort()
+    .flatMap((folder) =>
+      fs
+        .readdirSync(path.join(dir, folder), { withFileTypes: true })
+        .flatMap((f) => (f.isFile() ? [`${folder}/${f.name}`] : []))
+        .sort(),
+    );
+}
+
+/**
+ * Notes in the root and in the folders directly under `wiki/` (sections), with their paths, followed by
+ * the attachments in the `*.assets` folders next to them. Symbolic links are never followed.
+ */
 function wikiEntries(wikiDir: string): ZipEntry[] {
   let folders: string[];
   try {
     folders = fs
       .readdirSync(wikiDir, { withFileTypes: true })
-      .flatMap((e) => (e.isDirectory() ? [e.name] : []))
+      .flatMap((e) => (e.isDirectory() && !e.name.endsWith(ASSETS_SUFFIX) ? [e.name] : []))
       .sort();
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
   }
-  return ['', ...folders].flatMap((folder) =>
-    markdownIn(path.join(wikiDir, folder)).map((name) => ({
+  return ['', ...folders].flatMap((folder) => {
+    const dir = path.join(wikiDir, folder);
+    return [...markdownIn(dir), ...assetsIn(dir)].map((name) => ({
       name: [WIKI_FOLDER, folder, name].filter(Boolean).join('/'),
-      data: fs.readFileSync(path.join(wikiDir, folder, name)),
-    })),
-  );
+      data: fs.readFileSync(path.join(dir, name)),
+    }));
+  });
 }
 
 /** Builds the ZIP of everything: tables read in one transaction (a consistent snapshot) and wiki/. */

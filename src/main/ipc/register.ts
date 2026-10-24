@@ -54,6 +54,7 @@ import {
   updateNote,
   type Wiki,
 } from '../wiki/wiki';
+import { attachFile, openAttachment, readAttachment } from '../wiki/attachments';
 import { openWikiFolder } from '../wiki/open-folder';
 import type { WikiSync } from '../wiki/watcher';
 
@@ -156,8 +157,17 @@ export function registerIpcHandlers(
   ipcMain.handle(IpcChannel.updateNote, (_event, slug: unknown, input: unknown) =>
     withWikiWrite((w) => updateNote(w, slug, input)),
   );
-  ipcMain.handle(IpcChannel.deleteNote, (_event, slug: unknown) =>
-    withWikiWrite((w) => deleteNote(w, slug)),
+  ipcMain.handle(IpcChannel.deleteNote, (_event, slug: unknown, deleteAttachments?: unknown) =>
+    withWikiWrite((w) => deleteNote(w, slug, deleteAttachments ?? false)),
+  );
+  ipcMain.handle(IpcChannel.attachFile, (_event, input: unknown) =>
+    withWikiWrite((w) => attachFile(w, input)),
+  );
+  ipcMain.handle(IpcChannel.readAttachment, (_event, slug: unknown, src: unknown) =>
+    withWiki((w) => readAttachment(w, slug, src)),
+  );
+  ipcMain.handle(IpcChannel.openAttachment, (_event, slug: unknown, src: unknown) =>
+    withWiki((w) => openAttachment(w, slug, src, (file) => shell.openPath(file))),
   );
   ipcMain.handle(IpcChannel.listSkippedFiles, () => wikiSync.skipped());
   ipcMain.handle(IpcChannel.openWikiFolder, () =>

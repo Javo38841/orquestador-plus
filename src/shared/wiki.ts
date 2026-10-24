@@ -38,6 +38,8 @@ export interface Note extends NoteSummary {
   /** Hash of the file as read; sent back when saving to detect a change made outside the app. */
   hash: string;
   links: NoteLink[];
+  /** Files in the note's `.assets` folder; absent when it has none. */
+  attachments?: number;
   /** Notes that link to this one. */
   backlinks: NoteSummary[];
 }
@@ -136,6 +138,7 @@ export function isValidSection(section: unknown): section is string {
     !section.endsWith('.') &&
     !section.startsWith('.') &&
     !section.startsWith('_') &&
+    !section.toLowerCase().endsWith('.assets') &&
     !RESERVED_NAMES.test(section)
   );
 }
@@ -208,7 +211,11 @@ export type Inline =
   | { type: 'text'; text: string }
   | { type: 'code'; text: string }
   | { type: 'strong'; text: string }
-  | { type: 'link'; label: string; key: string };
+  | { type: 'link'; label: string; key: string }
+  /** `![alt](src)`: `src` is as written; `localTarget` says whether it may be loaded. */
+  | { type: 'image'; alt: string; src: string }
+  /** `[label](src)`: a file next to the note, or a link that is never followed. */
+  | { type: 'file'; label: string; src: string };
 
 export type CalloutKind = 'note' | 'tip' | 'caution';
 export const CALLOUT_KINDS: readonly CalloutKind[] = ['note', 'tip', 'caution'];
@@ -223,7 +230,8 @@ export type Block =
   | { type: 'callout'; kind: CalloutKind; title?: string; blocks: Block[] }
   | { type: 'table'; align: TableAlign[]; header: Inline[][]; rows: Inline[][][] };
 
-const INLINE = /`([^`\n]+)`|\*\*([^*\n]+)\*\*|\[\[([^[\]\n|]+)\]\]/g;
+const INLINE =
+  /`([^`\n]+)`|\*\*([^*\n]+)\*\*|\[\[([^[\]\n|]+)\]\]|!\[([^[\]\n]*)\]\(([^()\s]+)\)|\[([^[\]\n]+)\]\(([^()\s]+)\)/g;
 
 function parseInline(text: string): Inline[] {
   const out: Inline[] = [];
@@ -232,6 +240,8 @@ function parseInline(text: string): Inline[] {
     if (m.index > last) out.push({ type: 'text', text: text.slice(last, m.index) });
     if (m[1] !== undefined) out.push({ type: 'code', text: m[1] });
     else if (m[2] !== undefined) out.push({ type: 'strong', text: m[2] });
+    else if (m[5] !== undefined) out.push({ type: 'image', alt: m[4], src: m[5] });
+    else if (m[7] !== undefined) out.push({ type: 'file', label: m[6], src: m[7] });
     else {
       const label = m[3].trim().replace(/\s+/g, ' ');
       out.push({ type: 'link', label, key: noteKey(label) });
@@ -402,6 +412,25 @@ function parseBlocks(lines: string[], allowCallouts: boolean): Block[] {
  * `title="…"`), tables, `:::note|tip|caution` callouts, `code`, **bold** and `[[links]]`.
  * Produces data, never HTML, so nothing is injected.
  */
+/** Every inline part of `blocks`, in reading order, including those inside callouts, lists and tables. */
+export function inlineParts(blocks: Block[]): Inline[] {
+  return blocks.flatMap((block): Inline[] => {
+    switch (block.type) {
+      case 'heading':
+      case 'paragraph':
+        return block.inline;
+      case 'list':
+        return block.items.flat();
+      case 'callout':
+        return inlineParts(block.blocks);
+      case 'table':
+        return [...block.header.flat(), ...block.rows.flat(2)];
+      default:
+        return [];
+    }
+  });
+}
+
 export function parseMarkdown(content: string): Block[] {
   return parseBlocks(content.split(/\r?\n/), true);
 }
@@ -482,7 +511,12 @@ export interface TocEntry {
 type HeadingBlock = Extract<Block, { type: 'heading' }>;
 
 function inlineText(parts: Inline[]): string {
-  return parts.map((p) => (p.type === 'link' ? p.label : p.text)).join('');
+  return parts
+    .map((p) => {
+      if (p.type === 'link' || p.type === 'file') return p.label;
+      return p.type === 'image' ? p.alt : p.text;
+    })
+    .join('');
 }
 
 function headingId(text: string): string {
