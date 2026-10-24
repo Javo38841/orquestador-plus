@@ -3,9 +3,14 @@ import {
   buildWikiTree,
   extractLinks,
   extractToc,
+  isValidNotePath,
   isValidSection,
+  isValidSectionPath,
   isValidSlug,
+  linkTargets,
+  MAX_SECTION_DEPTH,
   noteKey,
+  sectionTrail,
   pageNavigation,
   parseMarkdown,
   slugFromTitle,
@@ -212,7 +217,7 @@ describe('wiki tree', () => {
 
   it('CP-08-67: a section without pages still shows in the tree', () => {
     const tree = buildWikiTree([], [{ name: 'Guías', title: 'Guías' }]);
-    expect(tree.sections).toEqual([{ name: 'Guías', title: 'Guías', pages: [] }]);
+    expect(tree.sections).toEqual([{ name: 'Guías', title: 'Guías', pages: [], sections: [] }]);
   });
 
   it('CP-08-68: validateSectionInput trims and rejects empty, unsafe or reserved names', () => {
@@ -305,8 +310,8 @@ describe('pageNavigation', () => {
   const tree: WikiTree = {
     pages: [page('R')],
     sections: [
-      { name: 's1', title: 's1', pages: [page('A'), page('B')] },
-      { name: 's2', title: 's2', pages: [page('C')] },
+      { name: 's1', title: 's1', pages: [page('A'), page('B')], sections: [] },
+      { name: 's2', title: 's2', pages: [page('C')], sections: [] },
     ],
   };
 
@@ -345,5 +350,160 @@ describe('attachment links in Markdown', () => {
   it('a section can never be named like an assets folder', () => {
     expect(isValidSection('nota.assets')).toBe(false);
     expect(isValidSection('Guías')).toBe(true);
+  });
+});
+
+describe('nested folders (#89)', () => {
+  const note = (slug: string, title: string, section?: string, order?: number): NoteSummary => ({
+    slug,
+    title,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...(section !== undefined && { section }),
+    ...(order !== undefined && { order }),
+  });
+
+  it('CP-08-76: each folder uses its own title and order within its level', () => {
+    const sections: SectionSummary[] = [
+      { name: 'Proyectos', title: 'Proyectos' },
+      { name: 'Proyectos/Zeta', title: 'Zeta', order: 1 },
+      { name: 'Proyectos/Alfa', title: 'Alfa' },
+      { name: 'Proyectos/Beta', title: 'Beta prácticas', order: 0 },
+      { name: 'Otra', title: 'Otra', order: 0 },
+      { name: 'Otra/Beta', title: 'Primera', order: 5 },
+      { name: 'Otra/Alfa', title: 'Segunda', order: 9 },
+    ];
+    const tree = buildWikiTree([], sections);
+    expect(tree.sections.map((s) => s.name)).toEqual(['Otra', 'Proyectos']);
+    const [otra, proyectos] = tree.sections;
+    expect(proyectos.sections.map((s) => s.title)).toEqual(['Beta prácticas', 'Zeta', 'Alfa']);
+    expect(otra.sections.map((s) => s.title)).toEqual(['Primera', 'Segunda']);
+  });
+
+  it('CP-08-76: without _section.md a folder is titled with its own name', () => {
+    const tree = buildWikiTree([note('A/B/n', 'N', 'A/B')], []);
+    expect(tree.sections[0]).toMatchObject({ name: 'A', title: 'A' });
+    expect(tree.sections[0].sections[0]).toMatchObject({ name: 'A/B', title: 'B' });
+  });
+
+  it('CP-08-77: a folder with no pages of its own but folders with pages, or an empty one, shows', () => {
+    const tree = buildWikiTree(
+      [note('P/Q/R/n', 'N', 'P/Q/R')],
+      [{ name: 'Vacia/Hija', title: 'Hija' }],
+    );
+    const p = tree.sections.find((s) => s.name === 'P')!;
+    expect(p.pages).toEqual([]);
+    expect(p.sections[0].sections[0].pages.map((n) => n.slug)).toEqual(['P/Q/R/n']);
+    expect(tree.sections.find((s) => s.name === 'Vacia')!.sections[0].name).toBe('Vacia/Hija');
+  });
+
+  it('CP-08-80: the trail has the title of every folder above the page', () => {
+    const tree = buildWikiTree(
+      [note('P/Q/adr', 'ADR-001', 'P/Q')],
+      [
+        { name: 'P', title: 'Proyectos' },
+        { name: 'P/Q', title: 'OrquestadorPlus' },
+      ],
+    );
+    expect(sectionTrail(tree, 'P/Q')).toEqual(['Proyectos', 'OrquestadorPlus']);
+    expect(sectionTrail(tree, undefined)).toEqual([]);
+    expect(sectionTrail(tree, 'X/Y')).toEqual(['X', 'Y']);
+  });
+
+  it('CP-08-84: previous / next walk folder by folder, depth first, in each level order', () => {
+    const tree = buildWikiTree(
+      [
+        note('r', 'R'),
+        note('A/a1', 'a1', 'A'),
+        note('A/B/b1', 'b1', 'A/B'),
+        note('A/C/c1', 'c1', 'A/C'),
+        note('A/a2', 'a2', 'A', 9),
+        note('Z/z1', 'z1', 'Z'),
+      ],
+      [
+        { name: 'A/B', title: 'B', order: 2 },
+        { name: 'A/C', title: 'C', order: 1 },
+      ],
+    );
+    const walk: string[] = [];
+    let at = pageNavigation(tree, 'r');
+    walk.push('r');
+    while (at.next) {
+      walk.push(at.next.slug);
+      at = pageNavigation(tree, at.next.slug);
+    }
+    // pages of a folder first (ordered first), then its folders by order
+    expect(walk).toEqual(['r', 'A/a2', 'A/a1', 'A/C/c1', 'A/B/b1', 'Z/z1']);
+  });
+
+  it('CP-08-85: a title shared by two folders resolves to the shortest path, then the first by path', () => {
+    const notes = [
+      note('B/x/Dup', 'Dup', 'B/x'),
+      note('A/Dup', 'Dup', 'A'),
+      note('Z/Dup', 'Dup', 'Z'),
+      note('C/Unico', 'Único', 'C'),
+    ];
+    const targets = linkTargets(notes);
+    expect(targets.get('dup')).toBe('A/Dup');
+    expect(targets.get(noteKey('Z/Dup'))).toBe('Z/Dup');
+    expect(targets.get(noteKey('B/x/Dup'))).toBe('B/x/Dup');
+    expect(targets.get(noteKey('A/Dup'))).toBe('A/Dup');
+    expect(targets.get('único')).toBe('C/Unico');
+    expect(targets.get('nada')).toBeUndefined();
+    // a note in the root beats any folder
+    expect(linkTargets([...notes, note('Dup', 'Dup')]).get('dup')).toBe('Dup');
+  });
+
+  it('CP-08-86: paths with .., absolute, backslashes or empty parts are not valid', () => {
+    for (const bad of [
+      '../x',
+      'a/../b',
+      '/etc/x',
+      'a//b',
+      'a/',
+      'a\\b',
+      'C:\\x',
+      '',
+      'a/.git/x',
+      7,
+    ]) {
+      expect(isValidNotePath(bad), String(bad)).toBe(false);
+    }
+    for (const bad of ['..', '/a', 'a//b', 'a/..', 'a/b/', '_x/y', 'a/b.assets', null]) {
+      expect(isValidSectionPath(bad), String(bad)).toBe(false);
+    }
+    expect(isValidNotePath('Proyectos/OrquestadorPlus/Decisiones/adr-001')).toBe(true);
+    expect(isValidNotePath('suelta')).toBe(true);
+    expect(isValidSectionPath('a/b c/ñ')).toBe(true);
+  });
+
+  it('CP-08-87: the depth limit allows 5 folders and rejects the 6th', () => {
+    expect(MAX_SECTION_DEPTH).toBe(5);
+    expect(isValidSectionPath('a/b/c/d/e')).toBe(true);
+    expect(isValidSectionPath('a/b/c/d/e/f')).toBe(false);
+    expect(isValidNotePath('a/b/c/d/e/nota')).toBe(true);
+    expect(isValidNotePath('a/b/c/d/e/f/nota')).toBe(false);
+    expect(validateSectionInput({ title: 'f', parent: 'a/b/c/d/e' })).toEqual({
+      ok: false,
+      error: 'too_deep',
+    });
+    expect(validateSectionInput({ title: 'e', parent: 'a/b/c/d' })).toEqual({
+      ok: true,
+      title: 'e',
+      parent: 'a/b/c/d',
+    });
+  });
+
+  it('CP-08-88: validateSectionInput and validateNoteInput reject bad parents and sections', () => {
+    for (const parent of ['..', '../x', 'a//b', 7, null, '/etc']) {
+      expect(validateSectionInput({ title: 'X', parent })).toEqual({ ok: false, error: 'invalid' });
+    }
+    for (const section of ['..', 'a/../b', '/x', 'a/b/c/d/e/f', 7, null]) {
+      expect(validateNoteInput({ title: 'X', content: '', section })).toEqual({
+        ok: false,
+        error: 'invalid',
+      });
+    }
+    expect(validateNoteInput({ title: 'X', content: '', section: 'a/b' }).ok).toBe(true);
   });
 });

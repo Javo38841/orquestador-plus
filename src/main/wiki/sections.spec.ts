@@ -65,11 +65,11 @@ describe('wiki sections', () => {
     const sectionOf = Object.fromEntries(listNotes(wiki).map((n) => [n.slug, n.section]));
     expect(sectionOf).toEqual({
       raiz: undefined,
-      uno: 'Guías',
-      dos: 'Guías',
-      inicio: 'Empezar',
+      'Guías/uno': 'Guías',
+      'Guías/dos': 'Guías',
+      'Empezar/inicio': 'Empezar',
     });
-    expect(listNotes(wiki, 'Guías').map((n) => n.slug)).toEqual(['dos', 'uno']);
+    expect(listNotes(wiki, 'Guías').map((n) => n.slug)).toEqual(['Guías/dos', 'Guías/uno']);
     expect(listSections(wiki).map((s) => s.name)).toEqual(['Empezar', 'Guías']);
   });
 
@@ -84,7 +84,7 @@ describe('wiki sections', () => {
       { name: 'Empezar', title: 'Empezar' },
       { name: 'Guías', title: 'Guías prácticas', order: 3 },
     ]);
-    expect(listNotes(wiki, 'Guías').find((n) => n.slug === 'b')).toMatchObject({
+    expect(listNotes(wiki, 'Guías').find((n) => n.slug === 'Guías/b')).toMatchObject({
       order: 2,
       description: 'Cómo hacerlo',
     });
@@ -92,10 +92,9 @@ describe('wiki sections', () => {
     expect(parseNote(serializeNote('T', 'c', 'u', 'x', { order: 4 })).order).toBe(4);
   });
 
-  it('CP-08-22: empty folders, unsafe names, nested folders and escaping symlinks are ignored', () => {
+  it('CP-08-22: empty folders, unsafe names and escaping symlinks are ignored', () => {
     fs.mkdirSync(path.join(wiki.dir, 'Vacía'), { recursive: true });
     write('Guías/ok.md', 'Ok');
-    write('Guías/Sub/profunda.md', 'Profunda');
     write('.oculta/x.md', 'Oculta');
     const outside = path.join(root, 'fuera');
     fs.mkdirSync(outside);
@@ -105,7 +104,7 @@ describe('wiki sections', () => {
     fs.symlinkSync(path.join(outside, 'secreto.md'), path.join(wiki.dir, 'raiz-sym.md'));
     rebuildIndex(wiki);
 
-    expect(listNotes(wiki).map((n) => n.slug)).toEqual(['ok']);
+    expect(listNotes(wiki).map((n) => n.slug)).toEqual(['Guías/ok']);
     expect(listSections(wiki).map((s) => s.name)).toEqual(['Guías']);
     expect(listNotes(wiki, '..')).toEqual([]);
     expect(listNotes(wiki, 'a\\b')).toEqual([]);
@@ -120,7 +119,7 @@ describe('wiki sections', () => {
     fs.rmSync(path.join(wiki.dir, 'Guías'), { recursive: true });
     fs.symlinkSync(outside, path.join(wiki.dir, 'Guías'), 'dir');
 
-    expect(getNote(wiki, 'ok')).toEqual({ ok: false, error: 'not_found' });
+    expect(getNote(wiki, 'Guías/ok')).toEqual({ ok: false, error: 'not_found' });
   });
 
   it('CP-08-23: create, edit and delete work inside the section folder and links still resolve', () => {
@@ -130,24 +129,24 @@ describe('wiki sections', () => {
     expect(createNote(wiki, { title: 'Beta', content: '' }).ok).toBe(true);
     expect(tree()).toEqual(['Beta.md', 'Guías', 'Guías/Alfa.md']);
 
-    const alfa = getNote(wiki, 'Alfa');
+    const alfa = getNote(wiki, 'Guías/Alfa');
     expect(alfa.ok && alfa.note.section).toBe('Guías');
     expect(alfa.ok && alfa.note.links).toEqual([{ label: 'Beta', key: 'beta', slug: 'Beta' }]);
 
-    const edited = updateNote(wiki, 'Alfa', { title: 'Alfa 2', content: 'nuevo' });
+    const edited = updateNote(wiki, 'Guías/Alfa', { title: 'Alfa 2', content: 'nuevo' });
     expect(edited.ok && edited.note.section).toBe('Guías');
     expect(tree()).toEqual(['Beta.md', 'Guías', 'Guías/Alfa 2.md']);
     const beta = getNote(wiki, 'Beta');
     expect(beta.ok && beta.note.backlinks).toEqual([]);
 
-    expect(deleteNote(wiki, 'Alfa 2')).toBe(true);
+    expect(deleteNote(wiki, 'Guías/Alfa 2')).toBe(true);
     expect(tree()).toEqual(['Beta.md', 'Guías']);
   });
 
   it('CP-08-23: editing keeps order and description; _section is not a valid note name', () => {
     write('Guías/b.md', 'B', 'order: 2\ndescription: "Resumen"\n');
     rebuildIndex(wiki);
-    updateNote(wiki, 'b', { title: 'B', content: 'cambiado' });
+    updateNote(wiki, 'Guías/b', { title: 'B', content: 'cambiado' });
     const saved = parseNote(fs.readFileSync(path.join(wiki.dir, 'Guías', 'b.md'), 'utf8'));
     expect(saved).toMatchObject({ order: 2, description: 'Resumen', content: 'cambiado' });
 
@@ -168,7 +167,7 @@ describe('wiki sections', () => {
     wiki = { db, dir: wiki.dir };
 
     expect(rebuildIndex(wiki)).toBe(1);
-    expect(listNotes(wiki)[0]).toMatchObject({ slug: 'Alfa', section: 'Guías' });
+    expect(listNotes(wiki)[0]).toMatchObject({ slug: 'Guías/Alfa', section: 'Guías' });
     expect(listSections(wiki)).toEqual([{ name: 'Guías', title: 'Guías prácticas', order: 1 }]);
   });
 
@@ -235,8 +234,8 @@ describe('wiki sections', () => {
       createNote(wiki, { title: 'A', content: '', section: 'Guías' });
       createNote(wiki, { title: 'B', content: '', section: 'Sueltas' });
       rebuildIndex(wiki);
-      deleteNote(wiki, 'A');
-      deleteNote(wiki, 'B');
+      deleteNote(wiki, 'Guías/A');
+      deleteNote(wiki, 'Sueltas/B');
       expect(listSections(wiki).map((s) => s.name)).toEqual(['Guías']);
     });
   });
@@ -247,7 +246,20 @@ describe('wiki sections', () => {
       const create = handlers.get(IpcChannel.createNote)!;
       const list = handlers.get(IpcChannel.listNotes)!;
 
-      for (const section of ['..', '../x', 'a/b', 'a\\b', '/etc', 'C:\\x', 7, null, '', '.git']) {
+      for (const section of [
+        '..',
+        '../x',
+        'a/../b',
+        'a//b',
+        'a/',
+        'a\\b',
+        '/etc',
+        'C:\\x',
+        7,
+        null,
+        '',
+        '.git',
+      ]) {
         expect(create({}, { title: 'X', content: '', section })).toEqual({
           ok: false,
           error: 'invalid',

@@ -4,13 +4,13 @@ export const NOTE_TITLE_MAX_LENGTH = 200;
 export const NOTE_CONTENT_MAX_LENGTH = 500_000;
 
 export interface NoteSummary {
-  /** File name without `.md`; the stable reference to a note. */
+  /** Path of the file inside `wiki/` without `.md` (`Proyectos/Decisiones/adr-001`); the stable reference to a note. */
   slug: string;
   title: string;
   /** ISO-8601 UTC timestamps. */
   createdAt: string;
   updatedAt: string;
-  /** Folder under `wiki/` the note lives in; absent for notes in the root (one level only). */
+  /** Path of the folder under `wiki/` the note lives in (`Proyectos/Decisiones`); absent for notes in the root. */
   section?: string;
   /** Position inside its section (`order` in the frontmatter); absent = after the ordered ones. */
   order?: number;
@@ -18,9 +18,9 @@ export interface NoteSummary {
   description?: string;
 }
 
-/** A folder of `wiki/` with notes in it. `_section.md` may give it a title and an order. */
+/** A folder of `wiki/` with notes or folders in it. `_section.md` may give it a title and an order. */
 export interface SectionSummary {
-  /** Folder name; the stable reference to a section. */
+  /** Path of the folder under `wiki/`; the stable reference to a section. */
   name: string;
   title: string;
   order?: number;
@@ -59,7 +59,7 @@ export type NoteError =
   'empty' | 'too_long' | 'invalid' | 'duplicate' | 'not_found' | 'conflict' | 'io';
 
 /** Why a file of `wiki/` is not in the index. */
-export type SkippedReason = 'duplicate' | 'unreadable' | 'invalid_name';
+export type SkippedReason = 'duplicate' | 'unreadable' | 'invalid_name' | 'too_deep';
 
 export interface SkippedFile {
   /** Path relative to `wiki/`, with `/` separators. */
@@ -81,7 +81,7 @@ export function validateNoteInput(
   { ok: true; title: string; content: string; section?: string } | { ok: false; error: NoteError } {
   if (typeof input !== 'object' || input === null) return { ok: false, error: 'invalid' };
   const { title, content, section } = input as Record<string, unknown>;
-  if (section !== undefined && !isValidSection(section)) return { ok: false, error: 'invalid' };
+  if (section !== undefined && !isValidSectionPath(section)) return { ok: false, error: 'invalid' };
   if (typeof title !== 'string' || typeof content !== 'string') {
     return { ok: false, error: 'invalid' };
   }
@@ -100,26 +100,67 @@ export function validateNoteInput(
 export const SECTION_FILE = '_section.md';
 
 export interface SectionInput {
-  /** Shown in the sidebar and used as the folder name under `wiki/`. */
+  /** Shown in the sidebar and used as the folder name. */
   title: string;
+  /** Path of the section to create the new one in; omitted for the root of `wiki/`. */
+  parent?: string;
 }
 
-export type SectionError = 'empty' | 'invalid' | 'duplicate' | 'io';
+export type SectionError = 'empty' | 'invalid' | 'duplicate' | 'too_deep' | 'io';
 
 export type SectionResult =
   { ok: true; section: SectionSummary } | { ok: false; error: SectionError };
 
-/** Trims the title; it must be usable as a folder name directly under `wiki/` (no `/`, `..`). */
+/**
+ * Trims the title; it must be usable as one folder name (no `/`, `..`). With a `parent`, it must be a valid
+ * section path and the new folder must not go deeper than `MAX_SECTION_DEPTH`.
+ */
 export function validateSectionInput(
   input: unknown,
-): { ok: true; title: string } | { ok: false; error: SectionError } {
+): { ok: true; title: string; parent?: string } | { ok: false; error: SectionError } {
   if (typeof input !== 'object' || input === null) return { ok: false, error: 'invalid' };
-  const { title } = input as Record<string, unknown>;
+  const { title, parent } = input as Record<string, unknown>;
   if (typeof title !== 'string') return { ok: false, error: 'invalid' };
+  if (parent !== undefined && !isValidSectionPath(parent, Infinity)) {
+    return { ok: false, error: 'invalid' };
+  }
   const trimmed = title.normalize('NFC').trim().replace(/\s+/g, ' ');
   if (trimmed.length === 0) return { ok: false, error: 'empty' };
   if (!isValidSection(trimmed)) return { ok: false, error: 'invalid' };
-  return { ok: true, title: trimmed };
+  if (parent !== undefined && sectionDepth(parent) + 1 > MAX_SECTION_DEPTH) {
+    return { ok: false, error: 'too_deep' };
+  }
+  return parent === undefined ? { ok: true, title: trimmed } : { ok: true, title: trimmed, parent };
+}
+
+/** Deepest nesting of folders under `wiki/` (ADR-005): `a/b/c/d/e` is five levels. */
+export const MAX_SECTION_DEPTH = 5;
+
+/** Number of folders in a section path (`a/b` = 2). */
+export function sectionDepth(section: string): number {
+  return section.split('/').length;
+}
+
+/** Section path of a folder named `name` inside `parent` (the root when null). */
+export function joinSection(parent: string | null | undefined, name: string): string {
+  return parent ? `${parent}/${name}` : name;
+}
+
+/** Path of the folder that holds `section`; null for a folder directly under `wiki/`. */
+export function parentSection(section: string): string | null {
+  const at = section.lastIndexOf('/');
+  return at === -1 ? null : section.slice(0, at);
+}
+
+/** `a/b/c` → `['a', 'a/b', 'a/b/c']`: the folder and every folder above it. */
+export function sectionChain(section: string): string[] {
+  const parts = section.split('/');
+  return parts.map((_, i) => parts.slice(0, i + 1).join('/'));
+}
+
+/** File name part of a note path (`a/b/note` → `note`). */
+export function slugBaseName(slug: string): string {
+  return slug.slice(slug.lastIndexOf('/') + 1);
 }
 
 /** Longest `description` kept from a frontmatter. */
@@ -143,7 +184,29 @@ export function isValidSection(section: unknown): section is string {
   );
 }
 
-/** A note reference coming over IPC: a bare file name, never a path. */
+/**
+ * A folder path coming over IPC or read from disk: 1 to `max` valid folder names joined by `/`.
+ * Never absolute, never with `..`, backslashes or empty parts.
+ */
+export function isValidSectionPath(section: unknown, max = MAX_SECTION_DEPTH): section is string {
+  return (
+    typeof section === 'string' &&
+    section.length > 0 &&
+    section.length <= 1024 &&
+    section.split('/').length <= max &&
+    section.split('/').every((part) => isValidSection(part))
+  );
+}
+
+/** A note reference coming over IPC: the path of its file inside `wiki/` without `.md`. */
+export function isValidNotePath(slug: unknown): slug is string {
+  if (typeof slug !== 'string' || slug.length > 1024) return false;
+  const at = slug.lastIndexOf('/');
+  if (at === -1) return isValidSlug(slug);
+  return isValidSectionPath(slug.slice(0, at)) && isValidSlug(slug.slice(at + 1));
+}
+
+/** One bare file name (without `.md`), never a path. */
 export function isValidSlug(slug: unknown): slug is string {
   return (
     typeof slug === 'string' &&
@@ -436,9 +499,12 @@ export function parseMarkdown(content: string): Block[] {
 }
 
 export interface WikiSection {
+  /** Path of the folder under `wiki/`. */
   name: string;
   title: string;
   pages: NoteSummary[];
+  /** Folders inside this one, in their order. */
+  sections: WikiSection[];
 }
 
 export interface WikiTree {
@@ -465,40 +531,105 @@ function byOrderThenName<T>(
 }
 
 /**
- * Builds the sidebar tree: sections and their pages by `order`, then by name. A note whose
- * section is not in `sections` still gets one, titled with the folder name; a section without
- * pages is kept, so a newly created one shows up.
+ * Builds the sidebar tree: at every level, sections and pages by `order`, then by name. A section
+ * missing from `sections` (a note's folder, or a folder above one) is made up, titled with its folder
+ * name; a section without pages is kept, so a newly created one shows up.
  */
 export function buildWikiTree(notes: NoteSummary[], sections: SectionSummary[]): WikiTree {
   const meta = new Map(sections.map((s) => [s.name, s] as const));
-  const grouped = new Map<string, NoteSummary[]>();
-  const root: NoteSummary[] = [];
-  for (const note of notes) {
-    if (note.section === undefined) root.push(note);
-    else grouped.set(note.section, [...(grouped.get(note.section) ?? []), note]);
+  for (const name of [...sections.map((s) => s.name), ...notes.flatMap((n) => n.section ?? [])]) {
+    for (const folder of sectionChain(name)) {
+      if (!meta.has(folder)) meta.set(folder, { name: folder, title: slugBaseName(folder) });
+    }
   }
-  const pageOrder = (pages: NoteSummary[]): NoteSummary[] =>
+  const pagesOf = new Map<string | null, NoteSummary[]>();
+  for (const note of notes) {
+    const key = note.section ?? null;
+    pagesOf.set(key, [...(pagesOf.get(key) ?? []), note]);
+  }
+  const childrenOf = new Map<string | null, SectionSummary[]>();
+  for (const s of meta.values()) {
+    const key = parentSection(s.name);
+    childrenOf.set(key, [...(childrenOf.get(key) ?? []), s]);
+  }
+  const pageOrder = (pages: NoteSummary[] | undefined): NoteSummary[] =>
     byOrderThenName(
-      pages,
+      pages ?? [],
       (n) => n.order,
       (n) => n.title,
     );
-  const known: SectionSummary[] = [
-    ...sections,
-    ...[...grouped.keys()].filter((name) => !meta.has(name)).map((name) => ({ name, title: name })),
-  ];
-  return {
-    pages: pageOrder(root),
-    sections: byOrderThenName(
-      known,
+  const level = (parent: string | null): WikiSection[] =>
+    byOrderThenName(
+      childrenOf.get(parent) ?? [],
       (s) => s.order,
       (s) => s.title,
     ).map((s) => ({
       name: s.name,
       title: s.title,
-      pages: pageOrder(grouped.get(s.name) ?? []),
-    })),
-  };
+      pages: pageOrder(pagesOf.get(s.name)),
+      sections: level(s.name),
+    }));
+  return { pages: pageOrder(pagesOf.get(null)), sections: level(null) };
+}
+
+/** Titles of the folders above a note, outermost first: `Proyectos`, `OrquestadorPlus`, … */
+export function sectionTrail(tree: WikiTree, section: string | undefined): string[] {
+  if (section === undefined) return [];
+  const trail: string[] = [];
+  let level = tree.sections;
+  for (const folder of sectionChain(section)) {
+    const found = level.find((s) => s.name === folder);
+    trail.push(found?.title ?? slugBaseName(folder));
+    level = found?.sections ?? [];
+  }
+  return trail;
+}
+
+/** Every page of a section and below, in sidebar order: its own pages, then each folder inside. */
+function pagesInOrder(section: WikiSection): NoteSummary[] {
+  return [...section.pages, ...section.sections.flatMap(pagesInOrder)];
+}
+
+/** Pages in the order the sidebar shows them: loose pages, then folder by folder, depth first. */
+export function orderedPages(tree: WikiTree): NoteSummary[] {
+  return [...tree.pages, ...tree.sections.flatMap(pagesInOrder)];
+}
+
+/**
+ * What a `[[link]]` key points at, as `key → slug`. A key is a title (`[[ADR-001]]`) or a path to
+ * disambiguate (`[[Proyectos/Decisiones/ADR-001]]`, by folder names and title or by file path).
+ * When several notes share a title, the one closest to the root wins, then the first by path
+ * (ADR-005). Path keys never clash: a folder holds one note per title and per file name.
+ */
+export function linkTargets(
+  notes: { slug: string; title: string; section?: string }[],
+): Map<string, string> {
+  const depth = (n: { slug: string }): number => n.slug.split('/').length;
+  const ordered = [...notes].sort(
+    (a, b) => depth(a) - depth(b) || collator.compare(a.slug, b.slug) || (a.slug < b.slug ? -1 : 1),
+  );
+  const targets = new Map<string, string>();
+  for (const n of ordered) {
+    const key = noteKey(n.title);
+    if (!targets.has(key)) targets.set(key, n.slug);
+  }
+  for (const n of ordered) {
+    if (n.section === undefined) continue;
+    for (const key of [noteKey(`${n.section}/${n.title}`), noteKey(n.slug)]) {
+      if (!targets.has(key)) targets.set(key, n.slug);
+    }
+  }
+  return targets;
+}
+
+/** Keys a note can be linked by: its title and, inside a folder, its path forms. */
+export function linkKeysOf(note: { slug: string; title: string; section?: string }): string[] {
+  return [
+    noteKey(note.title),
+    ...(note.section === undefined
+      ? []
+      : [noteKey(`${note.section}/${note.title}`), noteKey(note.slug)]),
+  ];
 }
 
 /** An entry of "En esta página": a `##` or `###` heading with a unique id. */
@@ -563,9 +694,9 @@ export interface PageNavigation {
   next: NoteSummary | null;
 }
 
-/** Previous / next page in sidebar order (loose pages, then each section), across sections. */
+/** Previous / next page in sidebar order (loose pages, then each section and its folders), across folders. */
 export function pageNavigation(tree: WikiTree, slug: string): PageNavigation {
-  const pages = [...tree.pages, ...tree.sections.flatMap((s) => s.pages)];
+  const pages = orderedPages(tree);
   const at = pages.findIndex((p) => p.slug === slug);
   if (at === -1) return { previous: null, next: null };
   return { previous: pages[at - 1] ?? null, next: pages[at + 1] ?? null };

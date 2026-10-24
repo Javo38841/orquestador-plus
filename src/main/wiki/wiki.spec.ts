@@ -244,7 +244,7 @@ describe('wiki', () => {
 
     create('A');
     const before = fs.readFileSync(path.join(wiki.dir, 'A.md'), 'utf8');
-    for (const slug of ['../datos', '..', 'a/b', 'a\\b', '', 42, null]) {
+    for (const slug of ['../datos', '..', 'a/../b', '/a', 'a//b', 'a\\b', '', 42, null]) {
       expect(getNote(wiki, slug)).toEqual({ ok: false, error: 'invalid' });
       expect(updateNote(wiki, slug, { title: 'X', content: '' })).toEqual({
         ok: false,

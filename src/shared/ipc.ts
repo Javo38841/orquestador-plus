@@ -124,11 +124,11 @@ export interface OrquestadorApi {
   listProjects(): Promise<Project[]>;
   createProject(name: string): Promise<ProjectResult>;
   deleteProject(id: number): Promise<boolean>;
-  /** Wiki notes sorted by title (RF-08), each with its section; `section` limits to one folder. */
+  /** Wiki notes sorted by title (RF-08), each with its section path; `section` limits to the notes of that folder. */
   listNotes(section?: string): Promise<NoteSummary[]>;
-  /** Folders of `wiki/` with notes or a `_section.md`, with the title and order from it. */
+  /** Folders of `wiki/` at any depth (up to 5) with notes, a `_section.md` or folders inside, with the title and order. */
   listSections(): Promise<SectionSummary[]>;
-  /** Creates a section folder with its `_section.md`; it shows even before it has pages. */
+  /** Creates a section folder (inside `input.parent` if given) with its `_section.md`; it shows even before it has pages. */
   createSection(input: SectionInput): Promise<SectionResult>;
   /** Files of `wiki/` left out of the index at the last rebuild, with the reason. */
   listSkippedFiles(): Promise<SkippedFile[]>;
@@ -136,7 +136,7 @@ export interface OrquestadorApi {
   openWikiFolder(): Promise<boolean>;
   /** Calls `listener` after `wiki/` changed outside the app (index already rebuilt). Returns the unsubscribe. */
   onWikiChanged(listener: () => void): () => void;
-  /** A note with its links and backlinks; `slug` is the file name without `.md`. */
+  /** A note with its links and backlinks; `slug` is the path of the file inside `wiki/` without `.md`. */
   getNote(slug: string): Promise<NoteResult>;
   createNote(input: NoteInput): Promise<NoteResult>;
   /** Saves content and, if the title changed, renames the note. */

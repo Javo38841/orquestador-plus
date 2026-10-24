@@ -58,7 +58,7 @@ describe('wiki attachments', () => {
     expect(createSection(wiki, { title: 'Guías' }).ok).toBe(true);
     make('instalacion', 'Guías');
 
-    const result = attachFile(wiki, { slug: 'instalacion', name: 'captura.png', data: PNG });
+    const result = attachFile(wiki, { slug: 'Guías/instalacion', name: 'captura.png', data: PNG });
 
     expect(result).toEqual({
       ok: true,
@@ -328,7 +328,7 @@ describe('wiki attachments', () => {
     make('Raíz');
     make('inst', 'Guías');
     attachFile(wiki, { slug: 'Raíz', name: 'r.png', data: PNG });
-    attachFile(wiki, { slug: 'inst', name: 'c.png', data: new Uint8Array([9, 9]) });
+    attachFile(wiki, { slug: 'Guías/inst', name: 'c.png', data: new Uint8Array([9, 9]) });
 
     const entries = readZip(buildExport(db, wiki.dir)).map((e) => e.name);
 
