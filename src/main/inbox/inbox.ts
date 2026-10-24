@@ -1,8 +1,13 @@
 import type Database from 'better-sqlite3';
+import { createBug } from '../bugs/bugs';
 import { createTask } from '../tasks/tasks';
+import { createNote, type Wiki } from '../wiki/wiki';
 import type { TaskResult } from '../../shared/tasks';
 import {
+  isInboxConvertType,
   validateCapture,
+  validateInboxBug,
+  type InboxConvertResult,
   type CaptureResult,
   type InboxItem,
   type InboxSource,
@@ -82,6 +87,91 @@ export function convertToTask(
     if (result.ok) db.prepare('DELETE FROM inbox_items WHERE id = ?').run(id);
     return result;
   })();
+}
+
+/** Thrown inside a transaction to undo it and hand the failure back to the caller. */
+class Rollback extends Error {
+  constructor(readonly result: InboxConvertResult) {
+    super('rollback');
+  }
+}
+
+function isId(id: unknown): id is number {
+  return typeof id === 'number' && Number.isInteger(id);
+}
+
+/** Turns an inbox item into a bug; the bug is created and the item removed in one transaction (RNF-08). */
+export function convertToBug(
+  db: Database.Database,
+  id: unknown,
+  input: unknown,
+  now: Date = new Date(),
+): InboxConvertResult {
+  if (!isId(id)) return { ok: false, error: 'not_found' };
+  const checked = validateInboxBug(input);
+  if (!checked.ok) return checked;
+  return db.transaction((): InboxConvertResult => {
+    if (!db.prepare('SELECT 1 FROM inbox_items WHERE id = ?').get(id)) {
+      return { ok: false, error: 'not_found' };
+    }
+    const result = createBug(db, input, now);
+    if (!result.ok) return result;
+    db.prepare('DELETE FROM inbox_items WHERE id = ?').run(id);
+    return { ok: true, type: 'bug', bug: result.bug };
+  })();
+}
+
+/**
+ * Turns an inbox item into a wiki note whose content is the captured text. The item is removed first
+ * and the file written last, all inside one transaction: if the note cannot be created (duplicate
+ * title, file write failure) the removal is undone, and no file is left behind (RNF-08).
+ */
+export function convertToNote(
+  wiki: Wiki,
+  id: unknown,
+  input: unknown,
+  now: Date = new Date(),
+): InboxConvertResult {
+  const { db } = wiki;
+  if (!isId(id)) return { ok: false, error: 'not_found' };
+  if (typeof input !== 'object' || input === null) return { ok: false, error: 'invalid' };
+  const raw = input as Record<string, unknown>;
+  if (raw['content'] !== undefined && typeof raw['content'] !== 'string') {
+    return { ok: false, error: 'invalid' };
+  }
+  try {
+    return db.transaction((): InboxConvertResult => {
+      const row = db.prepare('SELECT title FROM inbox_items WHERE id = ?').get(id) as
+        { title: string } | undefined;
+      if (!row) return { ok: false, error: 'not_found' };
+      // The note keeps the text as it was captured, whatever title the user chose.
+      const noteInput = { ...raw, content: row.title };
+      db.prepare('DELETE FROM inbox_items WHERE id = ?').run(id);
+      const result = createNote(wiki, noteInput, now);
+      if (!result.ok) throw new Rollback(result);
+      return { ok: true, type: 'note', note: result.note };
+    })();
+  } catch (error) {
+    if (error instanceof Rollback) return error.result;
+    throw error;
+  }
+}
+
+/** Converts an item into what `conversion.type` says, after checking the payload. */
+export function convertItem(
+  wiki: Wiki,
+  id: unknown,
+  conversion: unknown,
+  now: Date = new Date(),
+): InboxConvertResult {
+  if (typeof conversion !== 'object' || conversion === null) return { ok: false, error: 'invalid' };
+  const { type, input } = conversion as Record<string, unknown>;
+  if (!isInboxConvertType(type)) return { ok: false, error: 'invalid' };
+  if (typeof input !== 'object' || input === null) return { ok: false, error: 'invalid' };
+  if (type === 'bug') return convertToBug(wiki.db, id, input, now);
+  if (type === 'note') return convertToNote(wiki, id, input, now);
+  const result = convertToTask(wiki.db, id, input, now);
+  return result.ok ? { ok: true, type: 'task', task: result.task } : result;
 }
 
 /** Removes an item from the inbox. Returns whether it existed. */

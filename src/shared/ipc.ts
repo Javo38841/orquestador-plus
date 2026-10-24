@@ -2,7 +2,7 @@ import type { Bug, BugInput, BugResult, BugStatus } from './bugs';
 import type { Topic, TopicInput, TopicResult, TopicStatus } from './learning';
 import type { Snippet, SnippetInput, SnippetResult, SnippetsView } from './snippets';
 import type { JournalEntry, JournalResult } from './journal';
-import type { CaptureResult, InboxItem } from './inbox';
+import type { CaptureResult, InboxConversion, InboxConvertResult, InboxItem } from './inbox';
 import type { PortalLinkInput, PortalLinkResult, PortalLink, PortalStatus } from './portal';
 import type { ExportResult } from './export';
 import type { SearchResult } from './search';
@@ -107,8 +107,8 @@ export interface OrquestadorApi {
   getAppInfo(): Promise<AppInfo>;
   captureInbox(text: string): Promise<CaptureResult>;
   listInbox(): Promise<InboxItem[]>;
-  /** Creates a task from the item and removes the item from the inbox, atomically. */
-  convertInboxItem(id: number, input: TaskInput): Promise<TaskResult>;
+  /** Creates a task, a bug or a wiki note from the item and removes the item from the inbox, atomically. */
+  convertInboxItem(id: number, conversion: InboxConversion): Promise<InboxConvertResult>;
   discardInboxItem(id: number): Promise<boolean>;
   listTasks(): Promise<Task[]>;
   createTask(input: TaskInput): Promise<TaskResult>;

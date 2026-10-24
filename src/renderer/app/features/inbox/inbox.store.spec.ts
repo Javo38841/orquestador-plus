@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import type { CaptureResult, InboxItem } from '../../../../shared/inbox';
+import type { CaptureResult, InboxConvertResult, InboxItem } from '../../../../shared/inbox';
 import type { OrquestadorApi } from '../../../../shared/ipc';
-import type { Task, TaskResult } from '../../../../shared/tasks';
+import type { Task } from '../../../../shared/tasks';
 import { DESKTOP_API } from '../../core/desktop-api';
 import { InboxStore } from './inbox.store';
 
@@ -17,8 +17,9 @@ function setup(stored: InboxItem[] = []) {
     ok: true,
     item: item(99, text),
   }));
-  const convertInboxItem = vi.fn(async (): Promise<TaskResult> => ({
+  const convertInboxItem = vi.fn(async (): Promise<InboxConvertResult> => ({
     ok: true,
+    type: 'task',
     task: {} as Task,
   }));
   const discardInboxItem = vi.fn(async () => true);
@@ -69,7 +70,7 @@ describe('InboxStore', () => {
     await store.load();
     const input = { title: 'Revisar logs', dueDate: null, projectId: null };
     expect(await store.convert(1, input)).toBeNull();
-    expect(convertInboxItem).toHaveBeenCalledWith(1, input);
+    expect(convertInboxItem).toHaveBeenCalledWith(1, { type: 'task', input });
     expect(store.count()).toBe(0);
   });
 
@@ -98,5 +99,84 @@ describe('InboxStore', () => {
     await store.convert(1, { title: 'reporte', dueDate: null, projectId: null });
     expect(store.portalItems()).toEqual([]);
     expect(store.count()).toBe(1);
+  });
+
+  describe('bug and note conversion', () => {
+    const bug = {
+      title: 'Falla',
+      symptom: 'Pantalla blanca',
+      impact: 'Nadie entra',
+      rootCause: '',
+      solution: '',
+      severity: 'high' as const,
+    };
+
+    it('CP-01-15: converting to a bug sends it and removes the item', async () => {
+      const { store, convertInboxItem } = setup([item(1, 'a')]);
+      await store.load();
+      convertInboxItem.mockResolvedValueOnce({
+        ok: true,
+        type: 'bug',
+        bug: { title: 'Falla' } as never,
+      });
+      const outcome = await store.convertToBug(1, bug);
+      expect(outcome).toMatchObject({ ok: true, created: { type: 'bug' } });
+      expect(convertInboxItem).toHaveBeenCalledWith(1, { type: 'bug', input: bug });
+      expect(store.count()).toBe(0);
+    });
+
+    it('CP-01-16: an invalid bug form is rejected without calling the API', async () => {
+      const { store, convertInboxItem } = setup([item(1, 'a')]);
+      await store.load();
+      for (const input of [
+        { ...bug, title: ' ' },
+        { ...bug, symptom: '' },
+        { ...bug, impact: ' ' },
+        { ...bug, severity: 'critical' as never },
+      ]) {
+        expect((await store.convertToBug(1, input))?.ok).toBe(false);
+      }
+      expect(convertInboxItem).not.toHaveBeenCalled();
+      expect(store.count()).toBe(1);
+    });
+
+    it('CP-01-19: converting to a note sends the section and removes the item', async () => {
+      const { store, convertInboxItem } = setup([item(1, 'a')]);
+      await store.load();
+      convertInboxItem.mockResolvedValueOnce({
+        ok: true,
+        type: 'note',
+        note: { slug: 'x' } as never,
+      });
+      const outcome = await store.convertToNote(1, { title: 'Nota', section: 'Guias' });
+      expect(outcome).toMatchObject({ ok: true, created: { type: 'note' } });
+      expect(convertInboxItem).toHaveBeenCalledWith(1, {
+        type: 'note',
+        input: { title: 'Nota', section: 'Guias', content: '' },
+      });
+      expect(store.count()).toBe(0);
+    });
+
+    it('CP-01-20: a duplicate note keeps the item', async () => {
+      const { store, convertInboxItem } = setup([item(1, 'a')]);
+      await store.load();
+      convertInboxItem.mockResolvedValueOnce({ ok: false, error: 'duplicate' });
+      expect(await store.convertToNote(1, { title: 'Nota' })).toEqual({
+        ok: false,
+        error: 'duplicate',
+      });
+      expect(store.count()).toBe(1);
+    });
+
+    it('CP-01-21: an empty or too long note title is rejected without calling the API', async () => {
+      const { store, convertInboxItem } = setup([item(1, 'a')]);
+      await store.load();
+      expect(await store.convertToNote(1, { title: '  ' })).toEqual({ ok: false, error: 'empty' });
+      expect(await store.convertToNote(1, { title: 'x'.repeat(201) })).toEqual({
+        ok: false,
+        error: 'too_long',
+      });
+      expect(convertInboxItem).not.toHaveBeenCalled();
+    });
   });
 });

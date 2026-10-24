@@ -80,14 +80,14 @@ async function render(stored: Task[], options: Options = {}) {
       return { ok: true as const, task: created };
     },
   );
-  const convertInboxItem = vi.fn(async (id: number, input: { title: string }) => {
+  const convertInboxItem = vi.fn(async (id: number, { input }: { input: { title: string } }) => {
     inbox.splice(
       inbox.findIndex((i) => i.id === id),
       1,
     );
     const created = task(200 + id, { title: input.title });
     stored.push(created);
-    return { ok: true as const, task: created };
+    return { ok: true as const, type: 'task' as const, task: created };
   });
   const discardInboxItem = vi.fn(async (id: number) => {
     inbox.splice(
@@ -590,10 +590,10 @@ describe('BoardPage', () => {
         .click();
       await settle();
       await settle();
-      expect(convertInboxItem).toHaveBeenCalledWith(
-        7,
-        expect.objectContaining({ title: 'Reporte uno' }),
-      );
+      expect(convertInboxItem).toHaveBeenCalledWith(7, {
+        type: 'task',
+        input: expect.objectContaining({ title: 'Reporte uno' }),
+      });
       expect(column('inbox').querySelector('[data-testid="inbox-card"]')).toBeNull();
       expect(titles('todo')).toContain('Reporte uno');
       expect(heads(el)[0]!.text).toBe('Entrantes · 0');
