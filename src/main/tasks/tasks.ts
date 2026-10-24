@@ -7,6 +7,7 @@ import {
   type RecurrenceRule,
 } from '../../shared/recurrence';
 import {
+  HIDE_FROM_TODAY_MAX,
   isTaskStatus,
   localDate,
   validateProjectName,
@@ -33,11 +34,12 @@ interface TaskRow {
   rrule: string | null;
   reminder_at: string | null;
   reminder_notified_at: string | null;
+  hidden_from_today_at: string | null;
 }
 
 const SELECT_TASK = `
   SELECT t.id, t.title, t.status, t.due_date, t.project_id, p.name AS project_name, t.for_today, t.created_at, t.completed_at,
-         t.series_id, s.rrule, t.reminder_at, t.reminder_notified_at
+         t.series_id, s.rrule, t.reminder_at, t.reminder_notified_at, t.hidden_from_today_at
   FROM tasks t LEFT JOIN projects p ON p.id = t.project_id
   LEFT JOIN task_series s ON s.id = t.series_id`;
 
@@ -57,10 +59,11 @@ function toTask(row: TaskRow, tags: string[] = []): Task {
     recurrence: (row.rrule && fromRRule(row.rrule)) || { kind: 'once' },
     reminderAt: row.reminder_at,
     reminderNotifiedAt: row.reminder_notified_at,
+    hiddenFromTodayAt: row.hidden_from_today_at,
   };
 }
 
-function getTask(db: Database.Database, id: number): Task | null {
+export function getTask(db: Database.Database, id: number): Task | null {
   const row = db.prepare(`${SELECT_TASK} WHERE t.id = ?`).get(id) as TaskRow | undefined;
   if (!row) return null;
   const tags = db
@@ -294,6 +297,25 @@ export function setTaskForToday(db: Database.Database, id: unknown, forToday: un
   if (!isId(id) || !getTask(db, id)) return { ok: false, error: 'not_found' };
   db.prepare('UPDATE tasks SET for_today = ? WHERE id = ?').run(forToday ? 1 : 0, id);
   return { ok: true, task: getTask(db, id)! };
+}
+
+/**
+ * "Quitar de la lista" / "Limpiar completadas" in Hoy: hides completed tasks from Hoy without
+ * deleting them. Rejects anything but a non-empty list of integer ids (at most
+ * HIDE_FROM_TODAY_MAX); tasks that are not done are left alone. Returns how many were hidden.
+ */
+export function hideFromToday(db: Database.Database, ids: unknown, now: Date = new Date()): number {
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > HIDE_FROM_TODAY_MAX) return 0;
+  if (!ids.every(isId)) return 0;
+  const hide = db.prepare(
+    "UPDATE tasks SET hidden_from_today_at = ? WHERE id = ? AND status = 'done'",
+  );
+  const stamp = now.toISOString();
+  return db.transaction(() => {
+    let hidden = 0;
+    for (const id of new Set(ids)) hidden += hide.run(stamp, id).changes;
+    return hidden;
+  })();
 }
 
 /** Returns whether a task was deleted. */

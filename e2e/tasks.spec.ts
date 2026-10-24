@@ -55,7 +55,7 @@ test('CP-02-04: completing a task removes it from pending and un-completing brin
   await expect(page.getByTestId('task-row').filter({ hasText: 'Pagar la luz' })).toBeVisible();
 });
 
-test('CP-03-07: completing a task from Hoy removes it and lowers the count', async () => {
+test('CP-03-07: completing a task from Hoy lowers the count (it stays struck through, #93)', async () => {
   const { page } = launched;
   await page.getByTestId('new-task').click();
   await page.getByTestId('task-title').fill('Preparar demo');
@@ -69,8 +69,40 @@ test('CP-03-07: completing a task from Hoy removes it and lowers the count', asy
   await expect(page.getByTestId('today-subtitle')).toContainText('1 pendiente');
 
   await item.getByTestId('today-check').check();
-  await expect(item).toHaveCount(0);
+  await expect(item).toHaveAttribute('data-done', 'true');
   await expect(page.getByTestId('today-subtitle')).toContainText('0 pendientes');
+});
+
+test('CP-03-32: a task completed in Hoy stays struck, and once taken off the list it stays off after a restart', async () => {
+  const { page, app, dataDir } = launched;
+  await page.getByTestId('new-task').click();
+  await page.getByTestId('task-title').fill('Revisar PR');
+  await page.getByTestId('task-save').click();
+  await page
+    .getByTestId('task-row')
+    .filter({ hasText: 'Revisar PR' })
+    .getByTestId('task-today')
+    .click();
+
+  await page.getByRole('link', { name: 'Hoy' }).click();
+  const item = page.getByTestId('today-task').filter({ hasText: 'Revisar PR' });
+  await item.getByTestId('today-check').check();
+  await expect(item).toHaveAttribute('data-done', 'true');
+  await expect(item.getByTestId('today-title')).toHaveCSS('text-decoration-line', 'line-through');
+
+  await item.getByTestId('today-hide').click();
+  await expect(item).toHaveCount(0);
+
+  await app.close();
+  launched = await launchApp(dataDir);
+  const reopened = launched.page;
+  await reopened.getByRole('link', { name: 'Hoy' }).click();
+  await expect(reopened.getByTestId('today-subtitle')).toBeVisible();
+  await expect(reopened.getByTestId('today-task').filter({ hasText: 'Revisar PR' })).toHaveCount(0);
+
+  await reopened.getByRole('link', { name: 'Tareas' }).click();
+  await reopened.getByTestId('show-completed').check();
+  await expect(reopened.getByTestId('task-row').filter({ hasText: 'Revisar PR' })).toBeVisible();
 });
 
 test('CP-07-01: a tag added to a task shows as #infra in Tareas and in Hoy', async () => {

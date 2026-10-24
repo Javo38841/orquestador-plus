@@ -20,6 +20,7 @@ const task = (id: number, status: Task['status'] = 'todo'): Task => ({
   recurrence: { kind: 'once' },
   reminderAt: null,
   reminderNotifiedAt: null,
+  hiddenFromTodayAt: null,
 });
 
 async function setup(stored: Task[]) {

@@ -34,6 +34,7 @@ function fakeApi(overrides: Partial<AppInfo> = {}, bugs: Bug[] = []): Orquestado
     setTaskStatus: async () => ({ ok: false, error: 'not_found' }),
     setTaskForToday: async () => ({ ok: false, error: 'not_found' }),
     deleteTask: async () => false,
+    hideFromToday: async () => 0,
     listTags: async () => [],
     listProjects: async () => [],
     createProject: async () => ({ ok: false, error: 'empty' }),

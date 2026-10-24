@@ -38,7 +38,8 @@ test("CP-03-22: completing today's task lowers the group count and quick capture
     .filter({ hasText: 'Tarea de hoy' })
     .getByTestId('today-check')
     .check();
-  await expect(page.getByTestId('today-list')).toHaveCount(0);
+  // #93: the completed task stays struck through; only the count goes down.
+  await expect(page.getByTestId('today-list-title')).toHaveText('PARA HOY · 0');
   await expect(page.getByTestId('today-overdue-title')).toHaveText('ATRASADAS · 1');
 
   await page.getByTestId('today-capture').fill('Idea rápida');

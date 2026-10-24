@@ -3,7 +3,7 @@ import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import type { Task } from '../../../../shared/tasks';
-import { formatLongDate, todayGroups, tomorrowTasks } from '../../../../shared/today';
+import { formatLongDate, pendingOf, todayGroups, tomorrowTasks } from '../../../../shared/today';
 import { validateCapture } from '../../../../shared/inbox';
 import { PrimaryButton } from '../../shared/ui/primary-button';
 import { ProjectChip } from '../../shared/ui/project-chip';
@@ -15,7 +15,10 @@ import { recurrenceLabel } from '../recurrence/recurrence-label';
 import { FocusBlock } from './focus-block';
 import { TasksStore } from '../tasks/tasks.store';
 
-/** Hoy (RF-03): overdue tasks and what is due or marked for today. */
+/**
+ * Hoy (RF-03): overdue tasks and what is due or marked for today. A task completed here stays
+ * struck through in its place until taken off the list (#93); it is never deleted from Hoy.
+ */
 @Component({
   selector: 'app-today-page',
   imports: [
@@ -63,6 +66,19 @@ import { TasksStore } from '../tasks/tasks.store';
             {{ 'today.empty' | transloco }}
           </p>
         }
+        @if (doneShown().length > 0) {
+          <div class="-mt-2 mb-3 flex justify-end">
+            <button
+              type="button"
+              class="rounded-md px-2 py-1 text-xs text-muted outline-none hover:bg-surface hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+              data-testid="today-clear-done"
+              [title]="'today.hideHint' | transloco"
+              (click)="store.hideFromToday(doneShown())"
+            >
+              {{ 'today.clearDone' | transloco: { count: doneShown().length } }}
+            </button>
+          </div>
+        }
 
         @if (groups().overdue.length > 0) {
           <section class="mb-6" data-testid="today-overdue">
@@ -70,7 +86,7 @@ import { TasksStore } from '../tasks/tasks.store';
               class="mb-2 text-[11px] font-semibold tracking-widest text-warn uppercase"
               data-testid="today-overdue-title"
             >
-              {{ 'today.overdueTitle' | transloco: { count: groups().overdue.length } }}
+              {{ 'today.overdueTitle' | transloco: { count: pendingOverdue().length } }}
             </h2>
             <ng-container *ngTemplateOutlet="list; context: { $implicit: groups().overdue }" />
           </section>
@@ -82,7 +98,7 @@ import { TasksStore } from '../tasks/tasks.store';
               class="mb-2 text-[11px] font-semibold tracking-widest text-muted uppercase"
               data-testid="today-list-title"
             >
-              {{ 'today.forTodayTitle' | transloco: { count: groups().today.length } }}
+              {{ 'today.forTodayTitle' | transloco: { count: pendingToday().length } }}
             </h2>
             <ng-container *ngTemplateOutlet="list; context: { $implicit: groups().today }" />
           </section>
@@ -121,6 +137,8 @@ import { TasksStore } from '../tasks/tasks.store';
         @for (task of tasks; track task.id) {
           <div
             class="flex items-start gap-3 rounded-lg border border-line bg-surface px-4 py-2.5"
+            [class.opacity-60]="task.status === 'done'"
+            [attr.data-done]="task.status === 'done' ? 'true' : null"
             data-testid="today-task"
           >
             <input
@@ -128,10 +146,17 @@ import { TasksStore } from '../tasks/tasks.store';
               class="mt-1"
               data-testid="today-check"
               [attr.aria-label]="'tasks.complete' | transloco"
+              [checked]="task.status === 'done'"
               (change)="store.setDone(task, $any($event.target).checked)"
             />
             <div class="min-w-0 flex-1">
-              <span class="break-words">{{ task.title }}</span>
+              <span
+                class="break-words"
+                [class.line-through]="task.status === 'done'"
+                [class.text-muted]="task.status === 'done'"
+                data-testid="today-title"
+                >{{ task.title }}</span
+              >
               <div class="mt-1 flex flex-wrap items-center gap-1.5">
                 <app-project-chip [name]="task.projectName" />
                 @for (tag of task.tags; track tag) {
@@ -145,6 +170,18 @@ import { TasksStore } from '../tasks/tasks.store';
             <span class="shrink-0 text-sm" data-testid="today-due">
               <app-relative-date [date]="task.dueDate" [compact]="true" />
             </span>
+            @if (task.status === 'done') {
+              <button
+                type="button"
+                class="-my-0.5 shrink-0 rounded-md px-1.5 text-muted outline-none hover:bg-surface-raised hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+                data-testid="today-hide"
+                [attr.aria-label]="'today.hide' | transloco"
+                [title]="'today.hideHint' | transloco"
+                (click)="store.hideFromToday([task])"
+              >
+                ×
+              </button>
+            }
           </div>
         }
       </div>
@@ -171,10 +208,18 @@ export class TodayPage implements OnInit {
     ),
   );
 
-  protected readonly pending = computed(() => [...this.groups().overdue, ...this.groups().today]);
+  protected readonly pendingOverdue = computed(() => pendingOf(this.groups().overdue));
+  protected readonly pendingToday = computed(() => pendingOf(this.groups().today));
+  /** Still to do: what the counts and the focus block use. */
+  protected readonly pending = computed(() => [...this.pendingOverdue(), ...this.pendingToday()]);
+  /** Completed today and still shown struck through. */
+  protected readonly doneShown = computed(() =>
+    [...this.groups().overdue, ...this.groups().today].filter((t) => t.status === 'done'),
+  );
 
   protected readonly subtitle = computed(() => {
-    const { overdue, today } = this.groups();
+    const overdue = this.pendingOverdue();
+    const today = this.pendingToday();
     const count = (key: string, n: number) =>
       this.transloco.translate(n === 1 ? `${key}One` : key, { count: n });
     return this.transloco.translate('today.subtitle', {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dueLabel, formatLongDate, todayGroups, tomorrowTasks } from './today';
+import { dueLabel, formatLongDate, pendingOf, todayGroups, tomorrowTasks } from './today';
 import { localDate, type Task } from './tasks';
 
 // Tuesday 2026-10-20, midday local time.
@@ -20,6 +20,7 @@ const task = (id: number, extra: Partial<Task> = {}): Task => ({
   recurrence: { kind: 'once' },
   reminderAt: null,
   reminderNotifiedAt: null,
+  hiddenFromTodayAt: null,
   ...extra,
 });
 
@@ -49,6 +50,68 @@ describe('todayGroups', () => {
       task(4),
     ];
     expect(todayGroups(list, NOW)).toEqual({ overdue: [], today: [] });
+  });
+
+  // NOW is 12:00 local; completions are stamped in UTC like the database does.
+  const at = (hours: number, day = 20) => new Date(2026, 9, day, hours, 0).toISOString();
+
+  it('CP-03-24: a task completed today stays in its group, but no longer counts as pending', () => {
+    const done = task(1, { status: 'done', forToday: true, completedAt: at(9) });
+    const late = task(2, { status: 'done', dueDate: '2026-10-19', completedAt: at(10) });
+    const open = task(3, { forToday: true });
+    const groups = todayGroups([done, late, open], NOW);
+
+    expect(groups.today.map((t) => t.id)).toEqual([1, 3]);
+    expect(groups.overdue).toEqual([late]);
+    expect(pendingOf(groups.today)).toEqual([open]);
+    expect(pendingOf(groups.overdue)).toEqual([]);
+  });
+
+  it('CP-03-24: a completed task keeps its place in the order it is given', () => {
+    const list = [
+      task(1, { forToday: true }),
+      task(2, { forToday: true }),
+      task(3, { forToday: true }),
+    ];
+    const completed = [
+      list[0],
+      { ...list[1], status: 'done' as const, completedAt: at(11) },
+      list[2],
+    ];
+    expect(todayGroups(completed, NOW).today.map((t) => t.id)).toEqual([1, 2, 3]);
+  });
+
+  it('CP-03-25: completed on another day, or not a task of Hoy, it is left out (local day)', () => {
+    const list = [
+      task(1, { status: 'done', forToday: true, completedAt: at(18, 19) }),
+      task(2, { status: 'done', dueDate: '2026-10-27', completedAt: at(9) }),
+      task(3, { status: 'done', completedAt: at(9) }),
+      task(4, { status: 'done', forToday: true, completedAt: null }),
+    ];
+    expect(todayGroups(list, NOW)).toEqual({ overdue: [], today: [] });
+    // 00:30 local is still today even if it is yesterday in UTC.
+    const early = task(5, { status: 'done', forToday: true, completedAt: at(0.5) });
+    expect(todayGroups([early], NOW).today).toEqual([early]);
+  });
+
+  it('CP-03-27: a task taken off the list does not show again the same day', () => {
+    const t = task(1, {
+      status: 'done',
+      forToday: true,
+      completedAt: at(9),
+      hiddenFromTodayAt: at(10),
+    });
+    expect(todayGroups([t], NOW).today).toEqual([]);
+  });
+
+  it('CP-03-30: completing it again after taking it off the list shows it once more', () => {
+    const t = task(1, {
+      status: 'done',
+      forToday: true,
+      completedAt: at(11),
+      hiddenFromTodayAt: at(10),
+    });
+    expect(todayGroups([t], NOW).today).toEqual([t]);
   });
 
   it('CP-04-03: a task in progress still shows in Hoy until it is done', () => {

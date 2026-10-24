@@ -19,6 +19,7 @@ const task = (id: number, status: Task['status'] = 'todo', title = `t${id}`): Ta
   recurrence: { kind: 'once' },
   reminderAt: null,
   reminderNotifiedAt: null,
+  hiddenFromTodayAt: null,
 });
 
 function setup(stored: Task[]) {
@@ -45,12 +46,31 @@ function setup(stored: Task[]) {
     })),
     deleteTask: vi.fn(async () => true),
     deleteSeries: vi.fn(async () => true),
+    hideFromToday: vi.fn(async (ids: number[]) => ids.length),
   } as unknown as OrquestadorApi;
   TestBed.configureTestingModule({ providers: [{ provide: DESKTOP_API, useValue: api }] });
   return { store: TestBed.inject(TasksStore), api };
 }
 
 describe('TasksStore', () => {
+  it('CP-03-28: hideFromToday sends only completed tasks and reloads the list', async () => {
+    const { store, api } = setup([task(1, 'done'), task(2), task(3, 'done')]);
+    await store.load();
+    api.listTasks = vi.fn(async () => [task(2)]);
+
+    await store.hideFromToday(store.tasks());
+
+    expect(api.hideFromToday).toHaveBeenCalledWith([1, 3]);
+    expect(store.tasks().map((t) => t.id)).toEqual([2]);
+  });
+
+  it('CP-03-27: hideFromToday does not call main when nothing is completed', async () => {
+    const { store, api } = setup([task(2)]);
+    await store.load();
+    await store.hideFromToday(store.tasks());
+    expect(api.hideFromToday).not.toHaveBeenCalled();
+  });
+
   it('CP-04-03: move sends the new status and keeps the returned task', async () => {
     const { store, api } = setup([task(1)]);
     await store.load();
