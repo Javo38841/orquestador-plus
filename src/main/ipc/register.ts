@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { app, BrowserWindow, clipboard, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron';
 import type Database from 'better-sqlite3';
 import { IpcChannel, type AppInfo } from '../../shared/ipc';
 import { CHANNEL } from '../channel';
@@ -53,12 +53,18 @@ import {
   updateNote,
   type Wiki,
 } from '../wiki/wiki';
+import { openWikiFolder } from '../wiki/open-folder';
+import type { WikiSync } from '../wiki/watcher';
 
 export function registerIpcHandlers(
   db: Database.Database | null,
   wikiDir: string,
   reminders: Pick<ReminderScheduler, 'refresh'> = { refresh: () => undefined },
   portal: PortalServer | null = null,
+  wikiSync: Pick<WikiSync, 'markSynced' | 'skipped'> = {
+    markSynced: () => undefined,
+    skipped: () => [],
+  },
 ): void {
   ipcMain.handle(IpcChannel.getAppInfo, (): AppInfo => ({
     name: app.getName(),
@@ -128,18 +134,30 @@ export function registerIpcHandlers(
     withWiki((w) => listNotes(w, section)),
   );
   ipcMain.handle(IpcChannel.listSections, () => withWiki(listSections));
+  // The app's own writes are taken as known, so they are not reported as outside changes.
+  const withWikiWrite = <T>(run: (wiki: Wiki) => T): T => {
+    try {
+      return withWiki(run);
+    } finally {
+      wikiSync.markSynced();
+    }
+  };
   ipcMain.handle(IpcChannel.createSection, (_event, input: unknown) =>
-    withWiki((w) => createSection(w, input)),
+    withWikiWrite((w) => createSection(w, input)),
   );
   ipcMain.handle(IpcChannel.getNote, (_event, slug: unknown) => withWiki((w) => getNote(w, slug)));
   ipcMain.handle(IpcChannel.createNote, (_event, input: unknown) =>
-    withWiki((w) => createNote(w, input)),
+    withWikiWrite((w) => createNote(w, input)),
   );
   ipcMain.handle(IpcChannel.updateNote, (_event, slug: unknown, input: unknown) =>
-    withWiki((w) => updateNote(w, slug, input)),
+    withWikiWrite((w) => updateNote(w, slug, input)),
   );
   ipcMain.handle(IpcChannel.deleteNote, (_event, slug: unknown) =>
-    withWiki((w) => deleteNote(w, slug)),
+    withWikiWrite((w) => deleteNote(w, slug)),
+  );
+  ipcMain.handle(IpcChannel.listSkippedFiles, () => wikiSync.skipped());
+  ipcMain.handle(IpcChannel.openWikiFolder, () =>
+    openWikiFolder(wikiDir, (target) => shell.openPath(target)),
   );
 
   ipcMain.handle(IpcChannel.listBugs, () => withDb(listBugs));

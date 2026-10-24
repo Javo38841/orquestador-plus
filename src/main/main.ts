@@ -1,12 +1,13 @@
 import path from 'node:path';
 import { app, BrowserWindow, Menu, Notification } from 'electron';
 import type Database from 'better-sqlite3';
+import { WIKI_CHANGED_EVENT } from '../shared/ipc';
 import { appNameFor, CHANNEL, resolveDataDir } from './channel';
 import { initStorage } from './storage';
 import { registerIpcHandlers } from './ipc/register';
 import { createReminderScheduler, type ReminderScheduler } from './reminders/scheduler';
 import { createPortalServer, type PortalServer } from './portal/server';
-import { rebuildIndex } from './wiki/wiki';
+import { createWikiSync, type WikiSync } from './wiki/watcher';
 import { registerAppScheme, serveRenderer } from './protocol';
 import { createMainWindow } from './window';
 
@@ -22,6 +23,7 @@ registerAppScheme();
 let db: Database.Database | null = null;
 let reminders: ReminderScheduler | null = null;
 let portal: PortalServer | null = null;
+let wikiSync: WikiSync | null = null;
 // Notifications must stay referenced until shown or they may be garbage collected.
 const shownNotifications = new Set<Notification>();
 
@@ -41,8 +43,17 @@ if (!app.requestSingleInstanceLock()) {
     const storage = initStorage(dataDir);
     db = storage.db;
     const { wikiDir } = storage;
-    // Files are the source of truth (ADR-001): the index is rebuilt on every start.
-    rebuildIndex({ db, dir: wikiDir });
+    // Files are the source of truth (ADR-001): the index is rebuilt on every start, and again
+    // whenever wiki/ changes outside the app.
+    wikiSync = createWikiSync(
+      { db, dir: wikiDir },
+      {
+        onChange: () => {
+          for (const win of BrowserWindow.getAllWindows()) win.webContents.send(WIKI_CHANGED_EVENT);
+        },
+      },
+    );
+    wikiSync.start();
     reminders = createReminderScheduler({
       db,
       notify: (content) => {
@@ -55,7 +66,7 @@ if (!app.requestSingleInstanceLock()) {
     });
     // Created off: nothing listens until the user turns the portal on (RF-15).
     portal = createPortalServer({ db });
-    registerIpcHandlers(db, wikiDir, reminders, portal);
+    registerIpcHandlers(db, wikiDir, reminders, portal, wikiSync);
     serveRenderer(path.join(__dirname, '../renderer/browser'));
     createMainWindow(appName);
     // After the window exists, so overdue reminders from while the app was closed show now.
@@ -72,6 +83,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+  wikiSync?.stop();
   reminders?.stop();
   void portal?.stop();
   // Fold the WAL into datos.db so copying that single file to another system is safe (RNF-12).

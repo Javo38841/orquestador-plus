@@ -8,6 +8,7 @@ import type { ExportResult } from './export';
 import type { SearchResult } from './search';
 import type {
   NoteInput,
+  SkippedFile,
   NoteResult,
   NoteSummary,
   SectionInput,
@@ -42,6 +43,8 @@ export const IpcChannel = {
   listNotes: 'notes:list',
   listSections: 'notes:list-sections',
   createSection: 'notes:create-section',
+  listSkippedFiles: 'notes:list-skipped',
+  openWikiFolder: 'wiki:open-folder',
   getNote: 'notes:get',
   createNote: 'notes:create',
   updateNote: 'notes:update',
@@ -80,6 +83,9 @@ export const IpcChannel = {
   exportAll: 'export:all',
 } as const;
 
+/** Event main sends to the renderer when `wiki/` changed outside the app and the index was rebuilt. */
+export const WIKI_CHANGED_EVENT = 'wiki:changed';
+
 export type ReleaseChannel = 'dev' | 'prod';
 
 export interface AppInfo {
@@ -117,6 +123,12 @@ export interface OrquestadorApi {
   listSections(): Promise<SectionSummary[]>;
   /** Creates a section folder with its `_section.md`; it shows even before it has pages. */
   createSection(input: SectionInput): Promise<SectionResult>;
+  /** Files of `wiki/` left out of the index at the last rebuild, with the reason. */
+  listSkippedFiles(): Promise<SkippedFile[]>;
+  /** Opens `wiki/` in the system file explorer; main does it, the renderer touches no Node. */
+  openWikiFolder(): Promise<boolean>;
+  /** Calls `listener` after `wiki/` changed outside the app (index already rebuilt). Returns the unsubscribe. */
+  onWikiChanged(listener: () => void): () => void;
   /** A note with its links and backlinks; `slug` is the file name without `.md`. */
   getNote(slug: string): Promise<NoteResult>;
   createNote(input: NoteInput): Promise<NoteResult>;

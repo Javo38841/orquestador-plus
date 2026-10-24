@@ -35,6 +35,8 @@ export interface NoteLink {
 
 export interface Note extends NoteSummary {
   content: string;
+  /** Hash of the file as read; sent back when saving to detect a change made outside the app. */
+  hash: string;
   links: NoteLink[];
   /** Notes that link to this one. */
   backlinks: NoteSummary[];
@@ -45,9 +47,23 @@ export interface NoteInput {
   content: string;
   /** Folder to create the note in; omitted for the root. Ignored when editing. */
   section?: string;
+  /** Editing only: `Note.hash` the edit started from. If the file differs now, the save is a conflict. */
+  expectedHash?: string;
+  /** Editing only: save over a conflict instead of reporting it. */
+  overwrite?: boolean;
 }
 
-export type NoteError = 'empty' | 'too_long' | 'invalid' | 'duplicate' | 'not_found' | 'io';
+export type NoteError =
+  'empty' | 'too_long' | 'invalid' | 'duplicate' | 'not_found' | 'conflict' | 'io';
+
+/** Why a file of `wiki/` is not in the index. */
+export type SkippedReason = 'duplicate' | 'unreadable' | 'invalid_name';
+
+export interface SkippedFile {
+  /** Path relative to `wiki/`, with `/` separators. */
+  file: string;
+  reason: SkippedReason;
+}
 
 export type NoteResult = { ok: true; note: Note } | { ok: false; error: NoteError };
 
