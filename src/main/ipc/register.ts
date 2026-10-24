@@ -6,7 +6,7 @@ import { CHANNEL } from '../channel';
 import { exportAll } from '../export/export';
 import { createBug, deleteBug, listBugs, setBugStatus, updateBug } from '../bugs/bugs';
 import { listJournal, saveJournalEntry } from '../journal/journal';
-import { captureItem, convertToTask, discardItem, listInbox } from '../inbox/inbox';
+import { captureItem, convertItem, discardItem, listInbox } from '../inbox/inbox';
 import {
   createProject,
   createTask,
@@ -90,9 +90,6 @@ export function registerIpcHandlers(
     if (!db) throw new Error('Database not available');
     return run(db);
   };
-  ipcMain.handle(IpcChannel.convertInboxItem, (_event, id: unknown, input: unknown) =>
-    withDb((d) => convertToTask(d, id, input)),
-  );
   ipcMain.handle(IpcChannel.discardInboxItem, (_event, id: unknown) =>
     withDb((d) => discardItem(d, id)),
   );
@@ -148,6 +145,9 @@ export function registerIpcHandlers(
       wikiSync.markSynced();
     }
   };
+  ipcMain.handle(IpcChannel.convertInboxItem, (_event, id: unknown, conversion: unknown) =>
+    rearm(withWikiWrite((w) => convertItem(w, id, conversion))),
+  );
   ipcMain.handle(IpcChannel.createSection, (_event, input: unknown) =>
     withWikiWrite((w) => createSection(w, input)),
   );

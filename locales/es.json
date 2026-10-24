@@ -71,6 +71,16 @@
       "bug": "Bug",
       "note": "Nota",
       "soon": "Disponible pronto",
+      "optional": "opcional",
+      "section": "Sección de la wiki",
+      "reportedBy": "Reportado por: {{name}}",
+      "createdBug": "Se creó el bug «{{title}}».",
+      "openBug": "Ver en Bugs e incidencias",
+      "createdNote": "Se creó la nota «{{title}}».",
+      "openNote": "Abrir la nota",
+      "errors": {
+        "bugRequired": "El síntoma y el impacto son obligatorios"
+      },
       "itemTitle": "Título",
       "due": "Fecha límite",
       "project": "Proyecto",
