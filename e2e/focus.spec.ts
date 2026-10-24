@@ -42,3 +42,20 @@ test('CP-17-09: choosing a task, starting, pausing and resetting shows each stat
   await expect(page.getByTestId('focus-state')).toHaveText('Detenido');
   await expect(page.getByTestId('focus-clock')).toHaveText('25:00');
 });
+
+test('CP-17-21: the chosen duration survives changing screens and restarting the app', async () => {
+  const { page, app, dataDir } = launched;
+  await page.getByRole('link', { name: 'Hoy' }).click();
+  await page.getByTestId('focus-shortcut').filter({ hasText: '45 min' }).click();
+  await expect(page.getByTestId('focus-clock')).toHaveText('45:00');
+
+  await page.getByRole('link', { name: 'Tareas' }).click();
+  await page.getByRole('link', { name: 'Hoy' }).click();
+  await expect(page.getByTestId('focus-clock')).toHaveText('45:00');
+
+  await app.close();
+  const reopened = await launchApp(dataDir);
+  launched = reopened;
+  await reopened.page.getByRole('link', { name: 'Hoy' }).click();
+  await expect(reopened.page.getByTestId('focus-clock')).toHaveText('45:00');
+});

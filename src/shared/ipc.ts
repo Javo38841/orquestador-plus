@@ -86,6 +86,8 @@ export const IpcChannel = {
   setBoardPanelOpen: 'settings:set-board-panel-open',
   getSnippetsView: 'settings:get-snippets-view',
   setSnippetsView: 'settings:set-snippets-view',
+  getFocusMinutes: 'settings:get-focus-minutes',
+  setFocusMinutes: 'settings:set-focus-minutes',
   exportAll: 'export:all',
 } as const;
 
@@ -202,6 +204,9 @@ export interface OrquestadorApi {
   /** How Snippets lays out its cards; a grid unless the user chose the list (CP-13-15). */
   getSnippetsView(): Promise<SnippetsView>;
   setSnippetsView(view: SnippetsView): Promise<SnippetsView>;
+  /** Chosen Enfoque duration in minutes, 1 to 180; 25 when unset or invalid (CP-17-19, CP-17-20). */
+  getFocusMinutes(): Promise<number>;
+  setFocusMinutes(minutes: number): Promise<number>;
   /**
    * Exports everything as a ZIP of open formats (RF-11). Main opens the save dialog; the
    * renderer sends nothing and only gets the outcome.

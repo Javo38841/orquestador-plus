@@ -79,6 +79,8 @@ function fakeApi(overrides: Partial<AppInfo> = {}, bugs: Bug[] = []): Orquestado
     setBoardPanelOpen: async (open: boolean) => open,
     getSnippetsView: async () => 'grid' as const,
     setSnippetsView: async (view: 'grid' | 'list') => view,
+    getFocusMinutes: async () => 25,
+    setFocusMinutes: async (minutes: number) => minutes,
     setBoardProject: async (selection: 'general' | 'loose' | { projectId: number }) => selection,
     getRemindersEnabled: async () => true,
     setRemindersEnabled: async (enabled: boolean) => enabled,
