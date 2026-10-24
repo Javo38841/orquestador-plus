@@ -49,6 +49,7 @@ test('ADR-003: the renderer has no access to Node', async () => {
     require: 'undefined',
     process: 'undefined',
     api: [
+      'attachFile',
       'captureInbox',
       'convertInboxItem',
       'copyToClipboard',
@@ -90,7 +91,9 @@ test('ADR-003: the renderer has no access to Node', async () => {
       'listTasks',
       'listTopics',
       'onWikiChanged',
+      'openAttachment',
       'openWikiFolder',
+      'readAttachment',
       'revokePortalLink',
       'saveJournalEntry',
       'search',

@@ -311,8 +311,8 @@ Propuesta para validar junto con el diseño; nada de esto está decidido todaví
 ```
 OrquestadorPlus/
 ├── datos.db        tareas, bugs, etiquetas, bitácora, índice de búsqueda
-├── wiki/           notas en Markdown (.md con frontmatter)
-└── adjuntos/       imágenes y archivos enlazados desde las notas
+└── wiki/           notas en Markdown (.md con frontmatter)
+    └── <nota>.assets/   imágenes y archivos adjuntos, junto a su nota (enlaces Markdown estándar)
 ```
 
 ---

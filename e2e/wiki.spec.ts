@@ -145,3 +145,33 @@ test('CP-08-113: a .md created outside the app shows in the sidebar without rest
     timeout: 5000,
   });
 });
+
+// 1x1 transparent PNG
+const PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+test('CP-08-131: an image attached while editing shows in the reading view and lives next to the note', async () => {
+  const { page, dataDir } = launched;
+  await createNote(page, 'Instalación', 'Pasos:\n');
+
+  await page.getByTestId('note-edit').click();
+  await page.getByTestId('note-attach-input').setInputFiles({
+    name: 'captura.png',
+    mimeType: 'image/png',
+    buffer: PIXEL,
+  });
+  await expect(page.getByTestId('note-content')).toHaveValue(
+    /!\[captura\]\(Instalación\.assets\/captura\.png\)/,
+  );
+  await page.getByTestId('note-save').click();
+
+  const image = page.getByTestId('note-image');
+  await expect(image).toBeVisible();
+  await expect
+    .poll(() => image.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+  const stored = path.join(dataDir, 'wiki', 'Instalación.assets', 'captura.png');
+  expect(fs.readFileSync(stored)).toEqual(PIXEL);
+});
