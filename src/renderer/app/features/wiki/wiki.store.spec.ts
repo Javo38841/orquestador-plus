@@ -1,6 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import type { OrquestadorApi } from '../../../../shared/ipc';
-import type { Note, NoteResult, SectionResult, SectionSummary } from '../../../../shared/wiki';
+import type {
+  Note,
+  NoteResult,
+  SectionResult,
+  SectionSummary,
+  SkippedFile,
+} from '../../../../shared/wiki';
 import { DESKTOP_API } from '../../core/desktop-api';
 import { WikiStore } from './wiki.store';
 
@@ -9,10 +15,13 @@ const note = (slug: string, content = ''): Note => ({
   title: slug,
   createdAt: '2026-03-01T10:00:00.000Z',
   updatedAt: '2026-03-01T10:00:00.000Z',
+  hash: `hash-${slug}`,
   content,
   links: [],
   backlinks: [],
 });
+
+const changed: (() => void)[] = [];
 
 function setup(result: NoteResult = { ok: true, note: note('A') }) {
   const api = {
@@ -26,10 +35,17 @@ function setup(result: NoteResult = { ok: true, note: note('A') }) {
     createNote: vi.fn(async () => result),
     updateNote: vi.fn(async () => result),
     deleteNote: vi.fn(async () => true),
+    listSkippedFiles: vi.fn(async (): Promise<SkippedFile[]> => []),
+    openWikiFolder: vi.fn(async () => true),
+    onWikiChanged: vi.fn((listener: () => void) => {
+      changed.push(listener);
+      return () => changed.splice(changed.indexOf(listener), 1);
+    }),
   };
   TestBed.configureTestingModule({
     providers: [{ provide: DESKTOP_API, useValue: api as unknown as OrquestadorApi }],
   });
+  changed.length = 0;
   return { store: TestBed.inject(WikiStore), api };
 }
 

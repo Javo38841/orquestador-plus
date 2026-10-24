@@ -334,3 +334,101 @@ describe('wiki', () => {
     expect(fs.readdirSync(wiki.dir)).toEqual(['A.md']);
   });
 });
+
+describe('wiki conflicts with outside edits', () => {
+  let root: string;
+  let db: Database.Database;
+  let wiki: Wiki;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'orq-wiki-conflict-'));
+    db = openDatabase(root);
+    wiki = { db, dir: path.join(root, 'wiki') };
+  });
+  afterEach(() => {
+    db.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const open = (slug: string) => {
+    const result = getNote(wiki, slug);
+    if (!result.ok) throw new Error('missing');
+    return result.note;
+  };
+
+  it('CP-08-108: saving over a file changed on disk does not write and reports a conflict', () => {
+    createNote(wiki, { title: 'Nota', content: 'mía' });
+    const opened = open('Nota');
+    const file = path.join(wiki.dir, 'Nota.md');
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8') + '\nDe otro editor');
+    const before = fs.readFileSync(file, 'utf8');
+
+    const result = updateNote(wiki, 'Nota', {
+      title: 'Nota',
+      content: 'editada',
+      expectedHash: opened.hash,
+    });
+
+    expect(result).toEqual({ ok: false, error: 'conflict' });
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+  });
+
+  it('CP-08-108: "keep mine" (overwrite) writes my version, and an unchanged file saves normally', () => {
+    createNote(wiki, { title: 'Nota', content: 'mía' });
+    const opened = open('Nota');
+    const ok = updateNote(wiki, 'Nota', {
+      title: 'Nota',
+      content: 'v2',
+      expectedHash: opened.hash,
+    });
+    expect(ok.ok).toBe(true);
+
+    const file = path.join(wiki.dir, 'Nota.md');
+    fs.appendFileSync(file, '\nexterno');
+    const forced = updateNote(wiki, 'Nota', {
+      title: 'Nota',
+      content: 'v3',
+      expectedHash: opened.hash,
+      overwrite: true,
+    });
+    expect(forced.ok).toBe(true);
+    expect(parseNote(fs.readFileSync(file, 'utf8')).content).toBe('v3');
+  });
+
+  it('CP-08-109: a file deleted on disk is a conflict, even before the index noticed', () => {
+    createNote(wiki, { title: 'Nota', content: 'x' });
+    const opened = open('Nota');
+    fs.rmSync(path.join(wiki.dir, 'Nota.md'));
+
+    const result = updateNote(wiki, 'Nota', {
+      title: 'Nota',
+      content: 'y',
+      expectedHash: opened.hash,
+    });
+
+    expect(result).toEqual({ ok: false, error: 'conflict' });
+    expect(fs.existsSync(path.join(wiki.dir, 'Nota.md'))).toBe(false);
+  });
+
+  it('CP-08-109: a file renamed on disk (gone from the index) is a conflict; overwrite recreates it', () => {
+    createNote(wiki, { title: 'Nota', content: 'x' });
+    const opened = open('Nota');
+    fs.rmSync(path.join(wiki.dir, 'Nota.md'));
+    fs.writeFileSync(path.join(wiki.dir, 'Otra.md'), '---\ntitle: "Otra"\n---\n\nx');
+    rebuildIndex(wiki);
+
+    const input = { title: 'Nota', content: 'y', expectedHash: opened.hash };
+    expect(updateNote(wiki, 'Nota', input)).toEqual({ ok: false, error: 'conflict' });
+    expect(fs.existsSync(path.join(wiki.dir, 'Nota.md'))).toBe(false);
+
+    const forced = updateNote(wiki, 'Nota', { ...input, overwrite: true });
+    expect(forced.ok).toBe(true);
+  });
+
+  it('without expectedHash a missing note is still not_found', () => {
+    expect(updateNote(wiki, 'Nada', { title: 'Nada', content: '' })).toEqual({
+      ok: false,
+      error: 'not_found',
+    });
+  });
+});

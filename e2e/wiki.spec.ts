@@ -117,6 +117,9 @@ test('CP-08-101: editing a note from the UI keeps the tags and source of its fro
   const file = path.join(dataDir, 'wiki', 'Con tags.md');
   const raw = fs.readFileSync(file, 'utf8');
   fs.writeFileSync(file, raw.replace('created:', 'tags:\n  - a\n  - b\nsource: "x"\ncreated:'));
+  // The app notices the outside edit and reloads the page; a marker note tells when that happened.
+  fs.writeFileSync(path.join(dataDir, 'wiki', 'Marcador.md'), '---\ntitle: "Marcador"\n---\n\nx');
+  await expect(page.getByTestId('note-item').filter({ hasText: 'Marcador' })).toBeVisible();
   await page.getByTestId('note-edit').click();
   await page.getByTestId('note-content').fill('dos');
   await page.getByTestId('note-save').click();
@@ -125,4 +128,20 @@ test('CP-08-101: editing a note from the UI keeps the tags and source of its fro
   const saved = fs.readFileSync(file, 'utf8');
   expect(saved).toContain('tags:\n  - a\n  - b\nsource: "x"\n');
   expect(saved.endsWith('\n\ndos')).toBe(true);
+});
+
+test('CP-08-113: a .md created outside the app shows in the sidebar without restarting', async () => {
+  const { page, dataDir } = launched;
+  await expect(page.getByTestId('wiki-empty')).toBeVisible();
+  const wikiDir = path.join(dataDir, 'wiki');
+  fs.mkdirSync(wikiDir, { recursive: true });
+
+  fs.writeFileSync(
+    path.join(wikiDir, 'Desde fuera.md'),
+    '---\ntitle: "Desde fuera"\n---\n\nEscrita con otro editor',
+  );
+
+  await expect(page.getByTestId('note-item').filter({ hasText: 'Desde fuera' })).toBeVisible({
+    timeout: 5000,
+  });
 });

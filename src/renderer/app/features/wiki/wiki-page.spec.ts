@@ -7,6 +7,7 @@ import type {
   NoteSummary,
   SectionResult,
   SectionSummary,
+  SkippedFile,
 } from '../../../../shared/wiki';
 import { DESKTOP_API } from '../../core/desktop-api';
 import { TRANSLATIONS } from '../../i18n/transloco-loader';
@@ -23,6 +24,7 @@ const summary = (slug: string) => ({
 
 const noteA: Note = {
   ...summary('A'),
+  hash: 'hash-a',
   content: 'Mira [[B]] y [[Fantasma]]',
   links: [
     { label: 'B', key: 'b', slug: 'B' },
@@ -30,12 +32,19 @@ const noteA: Note = {
   ],
   backlinks: [summary('C')],
 };
-const noteB: Note = { ...summary('B'), content: 'hola', links: [], backlinks: [summary('A')] };
+const noteB: Note = {
+  ...summary('B'),
+  hash: 'hash-b',
+  content: 'hola',
+  links: [],
+  backlinks: [summary('A')],
+};
 
 interface Fixtures {
   notes?: NoteSummary[];
   sections?: SectionSummary[];
   notesByContent?: Record<string, Note>;
+  skipped?: SkippedFile[];
 }
 
 async function render(
@@ -43,6 +52,7 @@ async function render(
   fixtures: Fixtures = {},
 ) {
   const mode = { exit: vi.fn() };
+  const changed: (() => void)[] = [];
   const api = {
     listSections: vi.fn(async () => fixtures.sections ?? []),
     createSection: vi.fn(async (): Promise<SectionResult> => ({ ok: false, error: 'io' })),
@@ -56,6 +66,12 @@ async function render(
     createNote: vi.fn(async () => createResult),
     updateNote: vi.fn(async (): Promise<NoteResult> => ({ ok: true, note: noteA })),
     deleteNote: vi.fn(async () => true),
+    listSkippedFiles: vi.fn(async (): Promise<SkippedFile[]> => fixtures.skipped ?? []),
+    openWikiFolder: vi.fn(async () => true),
+    onWikiChanged: vi.fn((listener: () => void) => {
+      changed.push(listener);
+      return () => changed.splice(changed.indexOf(listener), 1);
+    }),
   };
   await TestBed.configureTestingModule({
     imports: [
@@ -91,7 +107,7 @@ async function render(
     field.dispatchEvent(new Event('input'));
     await settle();
   };
-  return { api, el, click, type, settle, fixture, mode };
+  return { api, el, click, type, settle, fixture, mode, changed };
 }
 
 describe('WikiPage', () => {
@@ -274,6 +290,7 @@ describe('WikiPage', () => {
         ...summary('Instalar'),
         section: 'Empezar',
         description: 'Cómo dejar todo listo',
+        hash: 'h',
         content: 'Pasos',
         links: [],
         backlinks: [],
@@ -365,6 +382,7 @@ describe('WikiPage', () => {
 describe('WikiPage right column and footer', () => {
   const long = (slug: string, content: string, backlinks: NoteSummary[] = []): Note => ({
     ...summary(slug),
+    hash: 'h',
     updatedAt: '2026-10-20T15:00:00.000Z',
     content,
     links: [],
@@ -441,6 +459,7 @@ describe('WikiPage right column and footer', () => {
       const created: Note = {
         ...summary('Instalación'),
         section: 'Guías',
+        hash: 'h',
         content: '',
         links: [],
         backlinks: [],
@@ -609,5 +628,149 @@ describe('WikiPage right column and footer', () => {
       expect(control.getAttribute('tabindex')).toBeNull();
       expect(control.className).toContain('focus-visible:ring');
     }
+  });
+});
+
+describe('WikiPage and changes made outside the app', () => {
+  const edited: Note = { ...noteA, hash: 'hash-a2', content: 'Contenido nuevo' };
+
+  it('CP-08-106: refreshes the sidebar and reloads the open page when its file changed', async () => {
+    const { api, el, click, changed, settle } = await render();
+    await click('note-item', 0);
+    expect(changed).toHaveLength(1);
+
+    api.listNotes.mockResolvedValue([summary('A'), summary('B'), summary('Nueva')]);
+    api.getNote.mockResolvedValue({ ok: true, note: edited });
+    changed[0]();
+    await new Promise((r) => setTimeout(r));
+    await settle();
+
+    expect(el.querySelectorAll('[data-testid="note-item"]')).toHaveLength(3);
+    expect(el.querySelector('[data-testid="note-view"]')?.textContent).toContain('Contenido nuevo');
+  });
+
+  it('CP-08-107: a deleted open page says in Spanish that it no longer exists', async () => {
+    const { api, el, click, changed, settle } = await render();
+    await click('note-item', 0);
+
+    api.listNotes.mockResolvedValue([summary('B')]);
+    api.getNote.mockResolvedValue({ ok: false, error: 'not_found' });
+    changed[0]();
+    await new Promise((r) => setTimeout(r));
+    await settle();
+
+    expect(el.querySelector('[data-testid="note-gone"]')?.textContent).toContain('ya no existe');
+    expect(el.querySelector('[data-testid="note-view"]')).toBeNull();
+    expect(el.querySelectorAll('[data-testid="note-item"]')).toHaveLength(1);
+  });
+
+  it('CP-08-108: a save over a changed file asks, and "Quedarme con mi versión" overwrites', async () => {
+    const { api, el, click, type, settle } = await render();
+    await click('note-item', 0);
+    await click('note-edit');
+    await type('note-content', 'mi edición');
+    api.updateNote.mockResolvedValueOnce({ ok: false, error: 'conflict' });
+
+    await click('note-save');
+
+    expect(api.updateNote).toHaveBeenCalledWith(
+      'A',
+      expect.objectContaining({ expectedHash: 'hash-a' }),
+    );
+    expect(el.querySelector('[data-testid="save-conflict"]')?.textContent).toContain(
+      'Quedarme con mi versión',
+    );
+    expect(el.querySelector('[data-testid="note-editor"]')).not.toBeNull();
+
+    await click('conflict-keep-mine');
+    await settle();
+
+    expect(api.updateNote).toHaveBeenLastCalledWith(
+      'A',
+      expect.objectContaining({ overwrite: true, content: 'mi edición' }),
+    );
+    expect(el.querySelector('[data-testid="note-editor"]')).toBeNull();
+  });
+
+  it('CP-08-108: "Recargar la del disco" discards my edit and shows the file', async () => {
+    const { api, el, click, type, settle } = await render();
+    await click('note-item', 0);
+    await click('note-edit');
+    await type('note-content', 'mi edición');
+    api.updateNote.mockResolvedValueOnce({ ok: false, error: 'conflict' });
+    await click('note-save');
+
+    api.getNote.mockResolvedValue({ ok: true, note: edited });
+    await click('conflict-reload');
+    await new Promise((r) => setTimeout(r));
+    await settle();
+
+    expect(el.querySelector('[data-testid="note-editor"]')).toBeNull();
+    expect(el.querySelector('[data-testid="note-view"]')?.textContent).toContain('Contenido nuevo');
+    expect(api.updateNote).toHaveBeenCalledTimes(1);
+  });
+
+  it('CP-08-109: a file deleted while I edit does not close the editor and the save is a conflict', async () => {
+    const { api, el, click, type, changed, settle } = await render();
+    await click('note-item', 0);
+    await click('note-edit');
+    await type('note-content', 'mi edición');
+
+    api.getNote.mockResolvedValue({ ok: false, error: 'not_found' });
+    changed[0]();
+    await new Promise((r) => setTimeout(r));
+    await settle();
+    expect(el.querySelector('[data-testid="note-editor"]')).not.toBeNull();
+    expect((el.querySelector('[data-testid="note-content"]') as HTMLTextAreaElement).value).toBe(
+      'mi edición',
+    );
+
+    api.updateNote.mockResolvedValueOnce({ ok: false, error: 'conflict' });
+    await click('note-save');
+    expect(el.querySelector('[data-testid="save-conflict"]')).not.toBeNull();
+  });
+
+  it('CP-08-110: shows a Spanish notice for skipped files that opens the list with the reason', async () => {
+    const { el, click } = await render(undefined, {
+      skipped: [
+        { file: 'Guías/Dup.md', reason: 'duplicate' },
+        { file: 'mal:nombre.md', reason: 'invalid_name' },
+      ],
+    });
+
+    expect(el.querySelector('[data-testid="skipped-toggle"]')?.textContent).toContain(
+      '2 archivos omitidos',
+    );
+    expect(el.querySelector('[data-testid="skipped-list"]')).toBeNull();
+
+    await click('skipped-toggle');
+
+    const items = Array.from(el.querySelectorAll('[data-testid="skipped-item"]')).map(
+      (i) => i.textContent,
+    );
+    expect(items[0]).toContain('Guías/Dup.md');
+    expect(items[0]).toContain('duplicado');
+    expect(items[1]).toContain('Nombre de archivo no válido');
+  });
+
+  it('CP-08-110: no notice when nothing was skipped', async () => {
+    const { el } = await render();
+    expect(el.querySelector('[data-testid="skipped-notice"]')).toBeNull();
+  });
+
+  it('CP-08-111: "Abrir carpeta de la wiki" asks main to open it', async () => {
+    const { api, el, click } = await render();
+    expect(el.querySelector('[data-testid="open-folder"]')?.textContent).toContain(
+      'Abrir carpeta de la wiki',
+    );
+    await click('open-folder');
+    expect(api.openWikiFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it('CP-08-112: stops listening when the page is destroyed', async () => {
+    const { changed, fixture } = await render();
+    expect(changed).toHaveLength(1);
+    fixture.destroy();
+    expect(changed).toHaveLength(0);
   });
 });

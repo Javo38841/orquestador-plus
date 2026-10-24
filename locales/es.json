@@ -321,7 +321,8 @@
       "invalid": "La nota no es válida",
       "duplicate": "Ya existe una nota con ese título o nombre de archivo",
       "notFound": "La nota ya no existe",
-      "io": "No se pudo guardar el archivo de la nota"
+      "io": "No se pudo guardar el archivo de la nota",
+      "conflict": "La nota cambió en el disco desde que la abriste"
     },
     "name": "Wiki de OrquestadorPlus",
     "search": "Buscar en la wiki",
@@ -352,6 +353,24 @@
       "saved": "Guardado",
       "tooLong": "El código es demasiado largo para un snippet",
       "failed": "No se pudo guardar el snippet"
+    },
+    "conflict": {
+      "title": "Este archivo cambió fuera de la app (o ya no existe). No se guardó nada.",
+      "keepMine": "Quedarme con mi versión",
+      "reloadDisk": "Recargar la del disco"
+    },
+    "gone": "Esta nota ya no existe: se borró o se renombró fuera de la app.",
+    "openFolder": "Abrir carpeta de la wiki",
+    "skipped": {
+      "summaryOne": "1 archivo omitido",
+      "summaryMany": "{{count}} archivos omitidos",
+      "title": "Archivos que no se pudieron cargar",
+      "close": "Cerrar",
+      "reasons": {
+        "duplicate": "Título o nombre duplicado",
+        "unreadable": "No se pudo leer",
+        "invalid_name": "Nombre de archivo no válido"
+      }
     }
   },
   "bugs": {

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { IpcChannel, type OrquestadorApi } from '../shared/ipc';
+import { IpcChannel, WIKI_CHANGED_EVENT, type OrquestadorApi } from '../shared/ipc';
 
 const api: OrquestadorApi = {
   getAppInfo: () => ipcRenderer.invoke(IpcChannel.getAppInfo),
@@ -21,6 +21,13 @@ const api: OrquestadorApi = {
   listNotes: (section) => ipcRenderer.invoke(IpcChannel.listNotes, section),
   listSections: () => ipcRenderer.invoke(IpcChannel.listSections),
   createSection: (input) => ipcRenderer.invoke(IpcChannel.createSection, input),
+  listSkippedFiles: () => ipcRenderer.invoke(IpcChannel.listSkippedFiles),
+  openWikiFolder: () => ipcRenderer.invoke(IpcChannel.openWikiFolder),
+  onWikiChanged: (listener) => {
+    const handler = (): void => listener();
+    ipcRenderer.on(WIKI_CHANGED_EVENT, handler);
+    return () => ipcRenderer.removeListener(WIKI_CHANGED_EVENT, handler);
+  },
   getNote: (slug) => ipcRenderer.invoke(IpcChannel.getNote, slug),
   createNote: (input) => ipcRenderer.invoke(IpcChannel.createNote, input),
   updateNote: (slug, input) => ipcRenderer.invoke(IpcChannel.updateNote, slug, input),

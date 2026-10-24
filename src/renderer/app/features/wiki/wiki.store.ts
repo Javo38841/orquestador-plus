@@ -10,6 +10,7 @@ import {
   type NoteSummary,
   type SectionError,
   type SectionSummary,
+  type SkippedFile,
 } from '../../../../shared/wiki';
 import { DESKTOP_API } from '../../core/desktop-api';
 
@@ -19,6 +20,8 @@ export class WikiStore {
   private readonly list = signal<NoteSummary[]>([]);
   private readonly folders = signal<SectionSummary[]>([]);
   private readonly open = signal<Note | null>(null);
+  private readonly missing = signal(false);
+  private readonly omitted = signal<SkippedFile[]>([]);
 
   readonly notes = this.list.asReadonly();
   readonly sections = this.folders.asReadonly();
@@ -30,6 +33,10 @@ export class WikiStore {
     if (name === undefined) return null;
     return this.folders().find((s) => s.name === name)?.title ?? name;
   });
+  /** Files of `wiki/` that could not be loaded, with the reason. */
+  readonly skipped = this.omitted.asReadonly();
+  /** True when the open note's file was deleted or renamed outside the app. */
+  readonly gone = this.missing.asReadonly();
   /** The note shown in the reading view. */
   readonly current = this.open.asReadonly();
   /** File name of the note each normalized title points to; missing = pending link. */
@@ -42,6 +49,37 @@ export class WikiStore {
     const [notes, sections] = await Promise.all([this.api.listNotes(), this.api.listSections()]);
     this.list.set(notes);
     this.folders.set(sections);
+    this.omitted.set(await this.api.listSkippedFiles());
+  }
+
+  /**
+   * Follows changes made to `wiki/` outside the app: reloads the sidebar and the open note if its file
+   * changed. While `isEditing()` the open note is kept as the edit started, so saving still detects the
+   * change as a conflict. Returns the function that stops listening.
+   */
+  watchExternalChanges(isEditing: () => boolean): () => void {
+    if (!this.api) return () => undefined;
+    return this.api.onWikiChanged(() => void this.refreshAfterExternalChange(isEditing()));
+  }
+
+  private async refreshAfterExternalChange(editing: boolean): Promise<void> {
+    try {
+      // The open page first, so by the time the sidebar shows the change the page is up to date too.
+      const note = this.open();
+      if (note) {
+        const result = await this.api!.getNote(note.slug);
+        this.missing.set(!result.ok);
+        if (result.ok && !editing && result.note.hash !== note.hash) this.open.set(result.note);
+      }
+      await this.load();
+    } catch {
+      // the next change notification retries
+    }
+  }
+
+  /** Opens `wiki/` in the system file explorer. */
+  async openFolder(): Promise<boolean> {
+    return this.api ? this.api.openWikiFolder() : false;
   }
 
   async openNote(slug: string): Promise<NoteError | null> {
@@ -49,15 +87,18 @@ export class WikiStore {
     const result = await this.api.getNote(slug);
     if (!result.ok) {
       this.open.set(null);
+      this.missing.set(false);
       await this.load();
       return result.error;
     }
+    this.missing.set(false);
     this.open.set(result.note);
     return null;
   }
 
   close(): void {
     this.open.set(null);
+    this.missing.set(false);
   }
 
   /** Validates locally, creates the note (in `section`, if given) and opens it. */
@@ -76,16 +117,23 @@ export class WikiStore {
     return null;
   }
 
-  /** Saves the open note; a changed title renames it. Links to it are refreshed. */
-  async save(slug: string, input: NoteInput): Promise<NoteError | null> {
+  /**
+   * Saves the open note; a changed title renames it. Links to it are refreshed. Sends the hash the edit
+   * started from, so a file changed outside the app comes back as `conflict` unless `overwrite`.
+   */
+  async save(slug: string, input: NoteInput, overwrite = false): Promise<NoteError | null> {
     const checked = validateNoteInput(input);
     if (!checked.ok) return checked.error;
     if (!this.api) return null;
+    const expectedHash = this.open()?.slug === slug ? this.open()?.hash : undefined;
     const result = await this.api.updateNote(slug, {
       title: checked.title,
       content: checked.content,
+      ...(expectedHash !== undefined && { expectedHash }),
+      ...(overwrite && { overwrite }),
     });
     if (!result.ok) return result.error;
+    this.missing.set(false);
     this.open.set(result.note);
     await this.load();
     return null;
@@ -108,6 +156,7 @@ export class WikiStore {
     if (!this.api) return;
     await this.api.deleteNote(slug);
     this.open.set(null);
+    this.missing.set(false);
     await this.load();
   }
 }

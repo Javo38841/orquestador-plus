@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
@@ -17,6 +18,7 @@ import {
   type NoteSummary,
   type SectionResult,
   type SectionSummary,
+  type SkippedFile,
 } from '../../shared/wiki';
 
 /** The wiki: Markdown files in `dir` (source of truth) indexed in SQLite. */
@@ -109,6 +111,11 @@ function writeFileAtomic(target: string, data: string): void {
     fs.rmSync(temp, { force: true });
     throw error;
   }
+}
+
+/** Hash of a file's text, to tell whether it changed on disk since the app read it. */
+export function hashText(text: string): string {
+  return crypto.createHash('sha256').update(text).digest('hex');
 }
 
 /** Notes are always written with `\n` line endings, whatever the editor or system sent. */
@@ -351,6 +358,7 @@ export function getNote(wiki: Wiki, slug: unknown): NoteResult {
   const note: Note = {
     ...toSummary(row),
     content: parseNote(text).content,
+    hash: hashText(text),
     links,
     backlinks: backlinks.map(toSummary),
   };
@@ -424,8 +432,20 @@ export function updateNote(
   if (!isValidSlug(slug)) return { ok: false, error: 'invalid' };
   const checked = validateNoteInput(input);
   if (!checked.ok) return checked;
+  const { expectedHash, overwrite } = input as { expectedHash?: unknown; overwrite?: unknown };
+  const guarded = typeof expectedHash === 'string' && overwrite !== true;
   const current = findBySlug(wiki.db, slug);
-  if (!current) return { ok: false, error: 'not_found' };
+  if (!current) {
+    // The file was deleted or renamed outside the app: never recreate it in silence.
+    if (typeof expectedHash !== 'string') return { ok: false, error: 'not_found' };
+    if (guarded) return { ok: false, error: 'conflict' };
+    return createNote(wiki, { title: checked.title, content: checked.content }, now);
+  }
+  if (guarded) {
+    const onDisk = readIfExists(filePath(wiki, current.slug, current.section));
+    if (onDisk === null || hashText(onDisk) !== expectedHash)
+      return { ok: false, error: 'conflict' };
+  }
 
   const key = noteKey(checked.title);
   const renamed = checked.title !== current.title;
@@ -564,19 +584,33 @@ interface FoundFile {
 }
 
 /** Page files of one folder of `wiki/`; symlinks and `_section.md` are not pages. */
-function pageFiles(dir: string, section: string | null): FoundFile[] {
-  return fs
+function pageFiles(dir: string, section: string | null): { found: FoundFile[]; invalid: string[] } {
+  const names = fs
     .readdirSync(dir, { withFileTypes: true })
     .filter(
       (e) =>
         e.isFile() &&
         e.name.toLowerCase().endsWith(EXTENSION) &&
-        e.name.toLowerCase() !== SECTION_FILE,
+        e.name.toLowerCase() !== SECTION_FILE &&
+        !e.name.startsWith('.'),
     )
     .map((e) => e.name.slice(0, -EXTENSION.length))
-    .filter((slug) => isValidSlug(slug))
-    .sort()
-    .map((slug) => ({ slug, section }));
+    .sort();
+  return {
+    found: names.filter((slug) => isValidSlug(slug)).map((slug) => ({ slug, section })),
+    invalid: names.filter((slug) => !isValidSlug(slug)).map((slug) => relative(section, slug)),
+  };
+}
+
+function relative(section: string | null, slug: string): string {
+  return (section === null ? '' : `${section}/`) + slug + EXTENSION;
+}
+
+export interface RebuildReport {
+  /** Notes indexed. */
+  count: number;
+  /** Files left out, with the reason. */
+  skipped: SkippedFile[];
 }
 
 /**
@@ -586,6 +620,12 @@ function pageFiles(dir: string, section: string | null): FoundFile[] {
  * or whose title or name clashes with an earlier one, is left out of the index (and untouched on disk).
  */
 export function rebuildIndex(wiki: Wiki): number {
+  return rebuildIndexReport(wiki).count;
+}
+
+/** Same as `rebuildIndex`, and also says which files were left out and why. */
+export function rebuildIndexReport(wiki: Wiki): RebuildReport {
+  const skipped: SkippedFile[] = [];
   fs.mkdirSync(wiki.dir, { recursive: true });
   removeOrphanTempFiles(wiki.dir);
   const folders = fs
@@ -593,12 +633,15 @@ export function rebuildIndex(wiki: Wiki): number {
     .filter((e) => e.isDirectory() && isValidSection(e.name))
     .map((e) => e.name)
     .sort();
-  const found: FoundFile[] = pageFiles(wiki.dir, null);
+  const root = pageFiles(wiki.dir, null);
+  const found: FoundFile[] = root.found;
+  for (const file of root.invalid) skipped.push({ file, reason: 'invalid_name' });
   const sections: SectionSummary[] = [];
   for (const name of folders) {
     const dir = sectionDir(wiki, name);
     removeOrphanTempFiles(dir);
-    const files = pageFiles(dir, name);
+    const { found: files, invalid } = pageFiles(dir, name);
+    for (const file of invalid) skipped.push({ file, reason: 'invalid_name' });
     const sectionFile = path.join(dir, SECTION_FILE);
     const hasFile = isInsideWiki(wiki, sectionFile);
     // An empty folder is not a section, unless it has its _section.md (created from the sidebar).
@@ -634,16 +677,21 @@ export function rebuildIndex(wiki: Wiki): number {
       const file = filePath(wiki, slug, section);
       let text: string;
       try {
-        if (!isInsideWiki(wiki, file)) continue;
+        if (!isInsideWiki(wiki, file)) throw new Error('outside wiki');
         text = fs.readFileSync(file, 'utf8');
       } catch {
-        continue; // an unreadable file must not abort the whole rebuild
+        // an unreadable file must not abort the whole rebuild
+        skipped.push({ file: relative(section, slug), reason: 'unreadable' });
+        continue;
       }
       const parsed = parseNote(text);
       const title = parsed.title ?? slug;
       const key = noteKey(title);
       const slugKey = slug.normalize('NFC').toLowerCase();
-      if (slugs.has(slugKey) || keys.has(key)) continue;
+      if (slugs.has(slugKey) || keys.has(key)) {
+        skipped.push({ file: relative(section, slug), reason: 'duplicate' });
+        continue;
+      }
       slugs.add(slugKey);
       keys.add(key);
       const mtime = fs.statSync(file).mtime.toISOString();
@@ -660,6 +708,6 @@ export function rebuildIndex(wiki: Wiki): number {
       indexLinks(wiki.db, Number(info.lastInsertRowid), parsed.content);
       count++;
     }
-    return count;
+    return { count, skipped };
   })();
 }
