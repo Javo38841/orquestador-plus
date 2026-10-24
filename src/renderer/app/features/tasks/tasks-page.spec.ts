@@ -664,5 +664,120 @@ describe('TasksPage', () => {
       expect(q('task-count')!.textContent!.trim()).toBe('1 tarea');
       expect(q('tab-tasks')!.textContent!.replace(/\s+/g, ' ').trim()).toBe('Tareas · 1');
     });
+
+    describe('completed tasks stay struck through (#100)', () => {
+      const doneToday = (id: number, extra: Partial<Task> = {}) =>
+        task(id, { status: 'done', completedAt: new Date().toISOString(), ...extra });
+      const rowOf = (el: HTMLElement, id: number) =>
+        el.querySelector<HTMLElement>(`[data-task-id="${id}"]`);
+      const flush = async (settle: () => Promise<void>) => {
+        await settle();
+        await new Promise((resolve) => setTimeout(resolve));
+        await settle();
+      };
+
+      it('CP-05-29: checking a task keeps its row struck, dimmed and checked, and lowers the count', async () => {
+        const setTaskStatus = vi.fn(
+          async (id: number, status: Task['status']): Promise<TaskResult> => ({
+            ok: true,
+            task: task(id, { status, completedAt: new Date().toISOString() }),
+          }),
+        );
+        const { q, el, settle } = await render([task(1), task(2)], { setTaskStatus });
+        rowOf(el, 1)!.querySelector<HTMLInputElement>('[data-testid="task-check"]')!.click();
+        await settle();
+
+        const row = rowOf(el, 1)!;
+        expect(row.dataset['done']).toBe('true');
+        expect(row.className).toContain('opacity-60');
+        expect(row.querySelector('[data-testid="task-title-text"]')!.className).toContain(
+          'line-through',
+        );
+        expect(row.querySelector<HTMLInputElement>('[data-testid="task-check"]')!.checked).toBe(
+          true,
+        );
+        expect(q('tab-tasks')!.textContent!.replace(/\s+/g, ' ').trim()).toBe('Tareas · 1');
+      });
+
+      it('CP-05-30: unchecking a struck task makes it pending again and raises the count', async () => {
+        const setTaskStatus = vi.fn(
+          async (id: number, status: Task['status']): Promise<TaskResult> => ({
+            ok: true,
+            task: task(id, { status }),
+          }),
+        );
+        const { q, el, settle } = await render([doneToday(1), task(2)], { setTaskStatus });
+        expect(q('tab-tasks')!.textContent!.replace(/\s+/g, ' ').trim()).toBe('Tareas · 1');
+        rowOf(el, 1)!.querySelector<HTMLInputElement>('[data-testid="task-check"]')!.click();
+        await settle();
+
+        expect(rowOf(el, 1)!.dataset['done']).toBeUndefined();
+        expect(
+          rowOf(el, 1)!.querySelector('[data-testid="task-title-text"]')!.className,
+        ).not.toContain('line-through');
+        expect(q('tab-tasks')!.textContent!.replace(/\s+/g, ' ').trim()).toBe('Tareas · 2');
+      });
+
+      it('CP-05-32: "×" removes a struck task from the list through the shared channel', async () => {
+        const hideFromToday = vi.fn(async (ids: number[]) => ids.length);
+        const { el, settle } = await render([doneToday(1), task(2)], { hideFromToday });
+        expect(rowOf(el, 2)!.querySelector('[data-testid="task-hide"]')).toBeNull();
+        const hide = rowOf(el, 1)!.querySelector<HTMLButtonElement>('[data-testid="task-hide"]')!;
+        expect(hide.getAttribute('aria-label')).toBe('Quitar de la lista');
+        hide.click();
+        await flush(settle);
+        expect(hideFromToday).toHaveBeenCalledWith([1]);
+      });
+
+      it('CP-05-33: "Limpiar completadas (N)" removes every struck task and only shows when there are some', async () => {
+        const first = await render([task(1)]);
+        expect(first.q('tasks-clear-done')).toBeNull();
+        TestBed.resetTestingModule();
+
+        const hideFromToday = vi.fn(async (ids: number[]) => ids.length);
+        const { q, settle } = await render([doneToday(1), doneToday(2), task(3)], {
+          hideFromToday,
+        });
+        expect(q('tasks-clear-done')!.textContent?.trim()).toBe('Limpiar completadas (2)');
+        q('tasks-clear-done')!.click();
+        await flush(settle);
+        expect(hideFromToday).toHaveBeenCalledWith([1, 2]);
+      });
+
+      it('CP-05-34: with "Mostrar completadas" every completed task is listed, hidden ones too', async () => {
+        const at = new Date().toISOString();
+        const { q, el, settle } = await render([
+          doneToday(1, { hiddenFromTodayAt: at }),
+          task(2, { status: 'done', completedAt: '2026-01-05T10:00:00.000Z' }),
+        ]);
+        expect(rowOf(el, 1)).toBeNull();
+        q<HTMLInputElement>('show-completed')!.click();
+        await settle();
+        expect(rowOf(el, 1)).not.toBeNull();
+        expect(rowOf(el, 2)).not.toBeNull();
+      });
+
+      it('CP-05-35: the clear button only counts struck tasks that pass the filters', async () => {
+        const { q, settle } = await render([
+          doneToday(1, { projectId: 1, projectName: 'api-gateway' }),
+          doneToday(2),
+          doneToday(3),
+        ]);
+        expect(q('tasks-clear-done')!.textContent?.trim()).toBe('Limpiar completadas (3)');
+        pick(q('filter-project')!, '1');
+        await settle();
+        expect(q('tasks-clear-done')!.textContent?.trim()).toBe('Limpiar completadas (1)');
+      });
+
+      it('CP-05-38: the struck row uses the same strike, "×" and label as Hoy', async () => {
+        const { el } = await render([doneToday(1)]);
+        const title = rowOf(el, 1)!.querySelector('[data-testid="task-title-text"]')!;
+        expect(title.className).toContain('line-through');
+        expect(title.className).toContain('text-muted');
+        expect(rowOf(el, 1)!.querySelector('[data-testid="task-hide"]')!.textContent?.trim()).toBe(
+          '×',
+        );
+      });
+    });
   });
 });
