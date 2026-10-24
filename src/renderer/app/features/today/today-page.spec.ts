@@ -30,14 +30,25 @@ const task = (id: number, extra: Partial<Task> = {}): Task => ({
   recurrence: { kind: 'once' },
   reminderAt: null,
   reminderNotifiedAt: null,
+  hiddenFromTodayAt: null,
   ...extra,
 });
 
 async function render(stored: Task[], inbox: InboxItem[] = []) {
-  const setTaskStatus = vi.fn(async (id: number, status: Task['status']): Promise<TaskResult> => ({
-    ok: true,
-    task: { ...stored.find((t) => t.id === id)!, status },
-  }));
+  // Behaves like main: completing stamps completedAt, hiding stamps hiddenFromTodayAt.
+  const setTaskStatus = vi.fn(async (id: number, status: Task['status']): Promise<TaskResult> => {
+    const at = stored.findIndex((t) => t.id === id);
+    const completedAt = status === 'done' ? new Date().toISOString() : null;
+    stored[at] = { ...stored[at], status, completedAt };
+    return { ok: true, task: stored[at] };
+  });
+  const hideFromToday = vi.fn(async (ids: number[]) => {
+    const stamp = new Date(Date.now() + 1).toISOString();
+    for (const [i, t] of stored.entries()) {
+      if (ids.includes(t.id) && t.status === 'done') stored[i] = { ...t, hiddenFromTodayAt: stamp };
+    }
+    return ids.length;
+  });
   const captureInbox = vi.fn(async (title: string) => ({
     ok: true as const,
     item: {
@@ -48,10 +59,11 @@ async function render(stored: Task[], inbox: InboxItem[] = []) {
     },
   }));
   const api = {
-    listTasks: async () => stored,
+    listTasks: async () => [...stored],
     listTags: async () => [],
     listProjects: async () => [],
     setTaskStatus,
+    hideFromToday,
     listInbox: async () => inbox,
     captureInbox: captureInbox,
   } as unknown as OrquestadorApi;
@@ -75,7 +87,7 @@ async function render(stored: Task[], inbox: InboxItem[] = []) {
     fixture.detectChanges();
   };
   const q = <T extends HTMLElement>(id: string) => el.querySelector<T>(`[data-testid="${id}"]`);
-  return { el, settle, q, captureInbox };
+  return { el, settle, q, captureInbox, hideFromToday };
 }
 
 describe('TodayPage', () => {
@@ -118,18 +130,121 @@ describe('TodayPage', () => {
     );
   });
 
-  it('CP-03-07: completing a task removes it and lowers the count', async () => {
-    const { el, settle } = await render([task(1, { forToday: true }), task(2, { forToday: true })]);
-    const subtitle = () => el.querySelector('[data-testid="today-subtitle"]')!.textContent;
-    expect(subtitle()).toContain('2 pendientes');
+  describe('completed tasks stay struck through (#93)', () => {
+    const rows = (el: HTMLElement) =>
+      Array.from(el.querySelectorAll<HTMLElement>('[data-testid="today-task"]'));
+    const toggle = async (
+      el: HTMLElement,
+      settle: () => Promise<void>,
+      index: number,
+      on: boolean,
+    ) => {
+      const check = rows(el)[index].querySelector<HTMLInputElement>('[data-testid="today-check"]')!;
+      check.checked = on;
+      check.dispatchEvent(new Event('change'));
+      await settle();
+    };
+    const doneToday = (id: number, extra: Partial<Task> = {}) =>
+      task(id, { forToday: true, status: 'done', completedAt: new Date().toISOString(), ...extra });
 
-    const check = el.querySelector<HTMLInputElement>('[data-testid="today-check"]')!;
-    check.checked = true;
-    check.dispatchEvent(new Event('change'));
-    await settle();
+    it('CP-03-24: completing a task keeps it struck through in place and lowers the counts', async () => {
+      const { el, settle, q } = await render([
+        task(1, { forToday: true }),
+        task(2, { forToday: true }),
+        task(3, { forToday: true }),
+      ]);
+      expect(q('today-subtitle')!.textContent).toContain('3 pendientes');
 
-    expect(el.querySelectorAll('[data-testid="today-task"]')).toHaveLength(1);
-    expect(subtitle()).toContain('1 pendiente ');
+      await toggle(el, settle, 1, true);
+
+      expect(rows(el).map((r) => r.textContent)).toEqual([
+        expect.stringContaining('Tarea 1'),
+        expect.stringContaining('Tarea 2'),
+        expect.stringContaining('Tarea 3'),
+      ]);
+      const done = rows(el)[1];
+      expect(done.dataset['done']).toBe('true');
+      expect(done.querySelector<HTMLInputElement>('[data-testid="today-check"]')!.checked).toBe(
+        true,
+      );
+      expect(done.querySelector('[data-testid="today-title"]')!.className).toContain(
+        'line-through',
+      );
+      expect(rows(el)[0].querySelector('[data-testid="today-title"]')!.className).not.toContain(
+        'line-through',
+      );
+      expect(q('today-subtitle')!.textContent).toContain('2 pendientes');
+      expect(q('today-list-title')!.textContent?.trim()).toBe('PARA HOY · 2');
+    });
+
+    it('CP-03-25: tasks completed on another day do not appear', async () => {
+      const yesterday = new Date(Date.now() - 36 * 3600 * 1000).toISOString();
+      const { el } = await render([doneToday(1, { completedAt: yesterday })]);
+      expect(rows(el)).toHaveLength(0);
+      expect(el.textContent).toContain('No tienes nada pendiente para hoy.');
+    });
+
+    it('CP-03-26: unchecking a struck task makes it pending again and raises the counts', async () => {
+      const { el, settle, q } = await render([doneToday(1), task(2, { forToday: true })]);
+      expect(q('today-subtitle')!.textContent).toContain('1 pendiente ');
+
+      await toggle(el, settle, 0, false);
+
+      expect(rows(el)[0].dataset['done']).toBeUndefined();
+      expect(rows(el)[0].querySelector('[data-testid="today-title"]')!.className).not.toContain(
+        'line-through',
+      );
+      expect(q('today-subtitle')!.textContent).toContain('2 pendientes');
+    });
+
+    it('CP-03-27: "Quitar de la lista" hides a struck task from Hoy without deleting it', async () => {
+      const { el, settle, hideFromToday } = await render([
+        doneToday(1),
+        task(2, { forToday: true }),
+      ]);
+      expect(rows(el)[1].querySelector('[data-testid="today-hide"]')).toBeNull();
+      const hide = rows(el)[0].querySelector<HTMLButtonElement>('[data-testid="today-hide"]')!;
+      expect(hide.getAttribute('aria-label')).toBe('Quitar de la lista');
+      expect(hide.title).toBe('Quitar de la lista de Hoy (la tarea no se borra)');
+
+      hide.click();
+      await settle();
+      await new Promise((resolve) => setTimeout(resolve));
+      await settle();
+
+      expect(hideFromToday).toHaveBeenCalledWith([1]);
+      expect(rows(el).map((r) => r.textContent)).toEqual([expect.stringContaining('Tarea 2')]);
+    });
+
+    it('CP-03-28: "Limpiar completadas" takes every struck task off and only shows when there are some', async () => {
+      const first = await render([task(1, { forToday: true })]);
+      expect(first.q('today-clear-done')).toBeNull();
+      TestBed.resetTestingModule();
+
+      const { el, settle, q, hideFromToday } = await render([
+        doneToday(1),
+        doneToday(2, { forToday: false, dueDate: shift(-1) }),
+        task(3, { forToday: true }),
+      ]);
+      expect(q('today-clear-done')!.textContent?.trim()).toBe('Limpiar completadas (2)');
+
+      q('today-clear-done')!.click();
+      await settle();
+      await new Promise((resolve) => setTimeout(resolve));
+      await settle();
+
+      expect(hideFromToday).toHaveBeenCalledWith([2, 1]);
+      expect(rows(el)).toHaveLength(1);
+      expect(q('today-clear-done')).toBeNull();
+    });
+
+    it('CP-03-31: the focus block only offers tasks still to do', async () => {
+      const { el } = await render([doneToday(1), task(2, { forToday: true })]);
+      const options = Array.from(el.querySelectorAll('[data-testid="focus-task"] option')).map(
+        (o) => o.textContent?.trim(),
+      );
+      expect(options).toEqual(['Elige una tarea', 'Tarea 2']);
+    });
   });
 
   it('CP-07-01: tags show as #chips on tasks in Hoy', async () => {

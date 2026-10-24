@@ -135,6 +135,9 @@
       "placeholder": "Anota una tarea, idea o bug y presiona Enter…",
       "shortcut": "Ctrl + Espacio"
     },
+    "hide": "Quitar de la lista",
+    "hideHint": "Quitar de la lista de Hoy (la tarea no se borra)",
+    "clearDone": "Limpiar completadas ({{count}})",
     "overdueTitle": "ATRASADAS · {{count}}",
     "forTodayTitle": "PARA HOY · {{count}}",
     "tomorrow": {

@@ -160,6 +160,13 @@ export class TasksStore {
     }
   }
 
+  /** Takes completed tasks off Hoy; they stay in the database and in Tareas. */
+  async hideFromToday(tasks: Task[]): Promise<void> {
+    const ids = tasks.filter((t) => t.status === 'done').map((t) => t.id);
+    if (!this.api || ids.length === 0) return;
+    if ((await this.api.hideFromToday(ids)) > 0) await this.load();
+  }
+
   async remove(task: Task): Promise<void> {
     if (!this.api) return;
     if (await this.api.deleteTask(task.id)) {

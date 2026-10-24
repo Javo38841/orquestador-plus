@@ -22,6 +22,7 @@ const task = (id: number): Task => ({
   recurrence: { kind: 'once' },
   reminderAt: null,
   reminderNotifiedAt: null,
+  hiddenFromTodayAt: null,
 });
 
 async function render() {
