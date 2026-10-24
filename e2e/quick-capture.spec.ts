@@ -66,3 +66,41 @@ test('CP-01-08: converting an inbox item creates a task with project and due dat
   await expect(row.getByTestId('task-project-chip')).toHaveText('cabina');
   await expect(row.getByTestId('task-due-date')).toHaveText(/31 dic/);
 });
+
+test('CP-01-26: a bug and a note are classified with the keyboard only (RNF-06)', async () => {
+  const { page } = launched;
+  await capture(launched, 'Falla el login');
+  await capture(launched, 'Apunte de despliegue');
+  await page.getByRole('link', { name: 'Bandeja de entrada' }).click();
+
+  // Bug: open the item, pick the type, fill the form and submit, all with keys.
+  await page.getByTestId('inbox-item').filter({ hasText: 'Falla el login' }).focus();
+  await page.keyboard.press('Enter');
+  await page.getByTestId('type-bug').focus();
+  await page.keyboard.press('Enter');
+  await page.getByTestId('classify-symptom').focus();
+  await page.keyboard.type('Pantalla blanca al entrar');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('Nadie puede entrar');
+  await page.getByTestId('classify-convert').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('classify-created')).toContainText('Falla el login');
+  await expect(page.getByTestId('inbox-item')).toHaveCount(1);
+
+  // Note: same flow at the root of the wiki.
+  await page.getByTestId('inbox-item').filter({ hasText: 'Apunte de despliegue' }).focus();
+  await page.keyboard.press('Enter');
+  await page.getByTestId('type-note').focus();
+  await page.keyboard.press('Enter');
+  await page.getByTestId('classify-convert').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('classify-created')).toContainText('Apunte de despliegue');
+  await expect(page.getByTestId('inbox-item')).toHaveCount(0);
+
+  await page.getByRole('link', { name: 'Bugs e incidencias' }).click();
+  await expect(page.getByTestId('bug-row').filter({ hasText: 'Falla el login' })).toBeVisible();
+  await page.getByRole('link', { name: 'Wiki' }).click();
+  await expect(
+    page.getByTestId('note-item').filter({ hasText: 'Apunte de despliegue' }),
+  ).toBeVisible();
+});
