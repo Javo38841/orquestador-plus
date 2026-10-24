@@ -49,12 +49,13 @@
   },
   "search": {
     "title": "Búsqueda global",
-    "placeholder": "Buscar tareas y elementos de la bandeja",
+    "placeholder": "Buscar tareas, bandeja y notas de la wiki",
     "hint": "↑↓ para moverte · Enter para abrir · Esc para cerrar",
     "empty": "Sin resultados",
     "groups": {
       "task": "Tareas",
-      "inbox": "Bandeja de entrada"
+      "inbox": "Bandeja de entrada",
+      "note": "Notas"
     }
   },
   "inbox": {

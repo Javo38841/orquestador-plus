@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
+import { of } from 'rxjs';
 import { TranslocoTestingModule } from '@jsverse/transloco';
 import type { OrquestadorApi } from '../../../../shared/ipc';
 import type {
@@ -45,6 +47,7 @@ interface Fixtures {
   sections?: SectionSummary[];
   notesByContent?: Record<string, Note>;
   skipped?: SkippedFile[];
+  query?: Record<string, string>;
 }
 
 async function render(
@@ -85,6 +88,14 @@ async function render(
     providers: [
       { provide: DESKTOP_API, useValue: api as unknown as OrquestadorApi },
       { provide: WikiMode, useValue: mode },
+      ...(fixtures.query
+        ? [
+            {
+              provide: ActivatedRoute,
+              useValue: { queryParamMap: of(convertToParamMap(fixtures.query)) },
+            },
+          ]
+        : []),
     ],
   }).compileComponents();
   const fixture = TestBed.createComponent(WikiPage);
@@ -772,5 +783,50 @@ describe('WikiPage and changes made outside the app', () => {
     expect(changed).toHaveLength(1);
     fixture.destroy();
     expect(changed).toHaveLength(0);
+  });
+});
+
+describe('WikiPage arriving from the global search', () => {
+  const withHeadings: Note = {
+    ...summary('Guia'),
+    hash: 'h',
+    content: 'Intro\n\n## Uno\n\ntexto\n\n## Dos\n\notro',
+    links: [],
+    backlinks: [],
+  };
+  const fixture = (query: Record<string, string>) => ({
+    notes: [summary('Guia')],
+    notesByContent: { Guia: withHeadings },
+    query,
+  });
+  const later = () => new Promise((resolve) => setTimeout(resolve, 5));
+
+  it('CP-10-22: opens the note and scrolls to the matching heading', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { el, api, settle } = await render(undefined, fixture({ note: 'Guia', heading: 'dos' }));
+    await later();
+    await settle();
+
+    expect(api.getNote).toHaveBeenCalledWith('Guia');
+    expect(el.querySelector('[data-testid="note-view-title"]')?.textContent).toContain('Guia');
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(
+      el
+        .querySelector('[data-testid="toc-item"][aria-current="location"]')
+        ?.getAttribute('data-toc-id'),
+    ).toBe('dos');
+  });
+
+  it('CP-10-22: without a heading the note opens from the top', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { el, settle } = await render(undefined, fixture({ note: 'Guia' }));
+    await later();
+    await settle();
+
+    expect(el.querySelector('[data-testid="note-view-title"]')?.textContent).toContain('Guia');
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(el.querySelector<HTMLElement>('[data-testid="wiki-scroll"]')?.scrollTop).toBe(0);
   });
 });
