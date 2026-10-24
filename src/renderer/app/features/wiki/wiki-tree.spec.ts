@@ -394,4 +394,124 @@ describe('WikiTreeComponent', () => {
       );
     });
   });
+
+  describe('moving pages (#99)', () => {
+    const drag = (el: Element, type: string) => {
+      // jsdom has no DragEvent: a plain event carrying the part of it the tree reads.
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', {
+        value: { setData: () => undefined, effectAllowed: '', dropEffect: '' },
+      });
+      el.dispatchEvent(event);
+    };
+    const sectionRow = (el: HTMLElement, i: number) =>
+      el.querySelectorAll('[data-testid="wiki-section-row"]')[i];
+
+    it('CP-08-143: dropping a page on a section of any level asks to move it there', async () => {
+      const nested = [page('a', 'Empezar'), page('z', 'Empezar/Hondo'), page('suelta')];
+      const { el, settle, fixture } = await render(nested);
+      const moves: unknown[] = [];
+      fixture.componentInstance.moved.subscribe((m) => moves.push(m));
+      drag(el.querySelector('[data-key="p:suelta"]')!, 'dragstart');
+      await settle();
+      drag(sectionRow(el, 1), 'drop');
+      await settle();
+      expect(moves).toEqual([{ slug: 'suelta', section: 'Empezar/Hondo' }]);
+    });
+
+    it('CP-08-143: dropping on the root zone asks to move to the root', async () => {
+      const { el, settle, fixture } = await render(notes);
+      const moves: unknown[] = [];
+      fixture.componentInstance.moved.subscribe((m) => moves.push(m));
+      expect(el.querySelector('[data-testid="wiki-root-drop"]')).toBeNull();
+      drag(el.querySelector('[data-key="p:a"]')!, 'dragstart');
+      await settle();
+      drag(el.querySelector('[data-testid="wiki-root-drop"]')!, 'drop');
+      await settle();
+      expect(moves).toEqual([{ slug: 'a', section: null }]);
+      expect(el.querySelector('[data-testid="wiki-root-drop"]')).toBeNull();
+    });
+
+    it('CP-08-144: the section under the pointer is highlighted, and a folded one unfolds after a moment', async () => {
+      const { el, fixture, settle } = await render(notes);
+      const toggle = el.querySelectorAll('[data-testid="wiki-section-toggle"]')[1] as HTMLElement;
+      toggle.click();
+      await settle();
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      drag(el.querySelector('[data-key="p:suelta"]')!, 'dragstart');
+      await settle();
+
+      vi.useFakeTimers();
+      try {
+        drag(sectionRow(el, 1), 'dragover');
+        fixture.detectChanges();
+        expect(sectionRow(el, 1).getAttribute('data-drop-over')).toBe('true');
+        expect(sectionRow(el, 0).getAttribute('data-drop-over')).toBeNull();
+
+        vi.advanceTimersByTime(300);
+        fixture.detectChanges();
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        vi.advanceTimersByTime(400);
+        fixture.detectChanges();
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('CP-08-144: leaving the folded section before the delay keeps it folded', async () => {
+      const { el, fixture, settle } = await render(notes);
+      const toggle = el.querySelectorAll('[data-testid="wiki-section-toggle"]')[1] as HTMLElement;
+      toggle.click();
+      await settle();
+      drag(el.querySelector('[data-key="p:suelta"]')!, 'dragstart');
+      await settle();
+
+      vi.useFakeTimers();
+      try {
+        drag(sectionRow(el, 1), 'dragover');
+        drag(sectionRow(el, 1), 'dragleave');
+        vi.advanceTimersByTime(1000);
+        fixture.detectChanges();
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(sectionRow(el, 1).getAttribute('data-drop-over')).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('CP-08-147: "Mover a…" lets the keyboard pick a section or the root and confirm', async () => {
+      const { el, settle, press, fixture } = await render(notes);
+      const moves: unknown[] = [];
+      fixture.componentInstance.moved.subscribe((m) => moves.push(m));
+      (el.querySelector('[data-key="p:a"]') as HTMLElement).focus();
+      await press('m');
+      const select = el.querySelector('[data-testid="move-target"]') as HTMLSelectElement;
+      expect(document.activeElement).toBe(select);
+      expect(Array.from(select.options).map((o) => o.textContent!.trim())).toEqual([
+        'Raíz de la wiki',
+        'Guías',
+      ]);
+      select.value = 'Guías';
+      select.form!.dispatchEvent(new Event('submit', { cancelable: true }));
+      await settle();
+      expect(moves).toEqual([{ slug: 'a', section: 'Guías' }]);
+      expect(el.querySelector('[data-testid="move-form"]')).toBeNull();
+      expect(document.activeElement).toBe(el.querySelector('[data-key="p:a"]'));
+    });
+
+    it('CP-08-147: Escape closes "Mover a…" without moving', async () => {
+      const { el, settle, fixture } = await render(notes);
+      const moves: unknown[] = [];
+      fixture.componentInstance.moved.subscribe((m) => moves.push(m));
+      (el.querySelectorAll('[data-testid="note-move"]')[0] as HTMLElement).click();
+      await settle();
+      el.querySelector('[data-testid="move-form"]')!.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+      await settle();
+      expect(el.querySelector('[data-testid="move-form"]')).toBeNull();
+      expect(moves).toEqual([]);
+    });
+  });
 });

@@ -42,6 +42,15 @@ export const NOTE_ERROR_KEYS: Record<NoteError, string> = {
   io: 'wiki.errors.io',
 };
 
+/** Messages for a failed move; a name already taken in the target has its own. */
+export const MOVE_ERROR_KEYS: Record<NoteError, string> = {
+  ...NOTE_ERROR_KEYS,
+  duplicate: 'wiki.errors.moveDuplicate',
+  invalid: 'wiki.errors.moveInvalid',
+  not_found: 'wiki.errors.moveNotFound',
+  io: 'wiki.errors.moveIo',
+};
+
 export const ATTACH_ERROR_KEYS: Record<AttachmentError, string> = {
   invalid: 'wiki.attach.errors.invalid',
   empty: 'wiki.attach.errors.empty',
@@ -240,6 +249,11 @@ interface Draft {
             }
           </div>
         }
+        @if (moveError(); as key) {
+          <p class="mb-2 text-xs text-warn" role="alert" data-testid="move-error">
+            {{ key | transloco }}
+          </p>
+        }
         @if (store.notes().length === 0 && store.sections().length === 0) {
           <p
             class="rounded-lg border border-line bg-surface px-4 py-3 text-sm text-muted"
@@ -255,6 +269,7 @@ interface Draft {
             [createPage]="createPage"
             [createSection]="createSubsection"
             (opened)="guard(openNote, $event)"
+            (moved)="movePage($event.slug, $event.section)"
           />
         }
       </nav>
@@ -611,6 +626,7 @@ export class WikiPage implements OnInit {
   protected readonly showSkipped = signal(false);
   protected readonly creatingSection = signal(false);
   protected readonly sectionError = signal<string | null>(null);
+  protected readonly moveError = signal<string | null>(null);
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
   /** Index entry the reader is on; null = the first one. */
   private readonly reached = signal<string | null>(null);
@@ -705,6 +721,38 @@ export class WikiPage implements OnInit {
     this.reached.set(null);
     return null;
   };
+
+  /**
+   * Moves a page to a section (`null` = the root), from a drop or "Mover a…". Moving the page being
+   * edited with unsaved changes asks first, like changing page; cancelling moves nothing.
+   */
+  protected movePage(slug: string, section: string | null): void {
+    this.moveError.set(null);
+    const run = (): void => void this.doMove(slug, section);
+    if (this.dirty() && this.editingSlug === slug) this.pending.set(run);
+    else run();
+  }
+
+  private async doMove(slug: string, section: string | null): Promise<void> {
+    let failure: NoteError | null;
+    try {
+      failure = await this.store.move(slug, section);
+    } catch {
+      failure = 'io';
+    }
+    if (failure) {
+      this.moveError.set(MOVE_ERROR_KEYS[failure]);
+      return;
+    }
+    // The page keeps being the one in the editor, under its new path.
+    if (this.editingSlug === slug) {
+      const moved = this.store.current();
+      if (moved) {
+        this.editingSlug = moved.slug;
+        if (this.attachSlug() === slug) this.attachSlug.set(moved.slug);
+      }
+    }
+  }
 
   protected readonly startNew = (): void => {
     this.editingSlug = null;

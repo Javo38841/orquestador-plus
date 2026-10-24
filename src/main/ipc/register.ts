@@ -51,6 +51,7 @@ import {
   getNote,
   listNotes,
   listSections,
+  moveNote,
   updateNote,
   type Wiki,
 } from '../wiki/wiki';
@@ -156,6 +157,9 @@ export function registerIpcHandlers(
   );
   ipcMain.handle(IpcChannel.updateNote, (_event, slug: unknown, input: unknown) =>
     withWikiWrite((w) => updateNote(w, slug, input)),
+  );
+  ipcMain.handle(IpcChannel.moveNote, (_event, slug: unknown, section: unknown) =>
+    withWikiWrite((w) => moveNote(w, slug, section)),
   );
   ipcMain.handle(IpcChannel.deleteNote, (_event, slug: unknown, deleteAttachments?: unknown) =>
     withWikiWrite((w) => deleteNote(w, slug, deleteAttachments ?? false)),

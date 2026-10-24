@@ -326,7 +326,20 @@
       "duplicate": "Ya existe una nota con ese título o nombre de archivo",
       "notFound": "La nota ya no existe",
       "io": "No se pudo guardar el archivo de la nota",
-      "conflict": "La nota cambió en el disco desde que la abriste"
+      "conflict": "La nota cambió en el disco desde que la abriste",
+      "moveDuplicate": "Ya hay una página con ese nombre en la sección de destino. No se movió nada.",
+      "moveInvalid": "No se puede mover la página a esa sección",
+      "moveNotFound": "La página o la sección de destino ya no existe",
+      "moveIo": "No se pudo mover la página. Sigue en su sección."
+    },
+    "move": {
+      "button": "Mover {{page}} a…",
+      "title": "Mover a…",
+      "target": "Sección de destino de {{page}}",
+      "root": "Raíz de la wiki",
+      "confirm": "Mover",
+      "cancel": "Cancelar",
+      "dropRoot": "Suelta aquí para dejar la página en la raíz de la wiki"
     },
     "name": "Wiki de OrquestadorPlus",
     "search": "Buscar en la wiki",

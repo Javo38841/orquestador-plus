@@ -51,6 +51,7 @@ export const IpcChannel = {
   createNote: 'notes:create',
   updateNote: 'notes:update',
   deleteNote: 'notes:delete',
+  moveNote: 'notes:move',
   attachFile: 'notes:attach',
   readAttachment: 'notes:read-attachment',
   openAttachment: 'notes:open-attachment',
@@ -141,6 +142,8 @@ export interface OrquestadorApi {
   createNote(input: NoteInput): Promise<NoteResult>;
   /** Saves content and, if the title changed, renames the note. */
   updateNote(slug: string, input: NoteInput): Promise<NoteResult>;
+  /** Moves the note and its `.assets` folder to another section; `null` is the root of `wiki/`. */
+  moveNote(slug: string, section: string | null): Promise<NoteResult>;
   /** Deletes the note; with `deleteAttachments` also its `.assets` folder, otherwise that is kept. */
   deleteNote(slug: string, deleteAttachments?: boolean): Promise<boolean>;
   /** Copies a file into the note's `.assets` folder and returns the Markdown link to insert (RF-08). */
