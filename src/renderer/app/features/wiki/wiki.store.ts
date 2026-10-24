@@ -1,4 +1,5 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
+import { ATTACHMENT_MAX_BYTES, type AttachmentResult } from '../../../../shared/attachments';
 import {
   buildWikiTree,
   noteKey,
@@ -152,9 +153,28 @@ export class WikiStore {
     return null;
   }
 
-  async remove(slug: string): Promise<void> {
+  /**
+   * Attaches a file to a saved note and returns the Markdown link to insert. An empty or oversized file is
+   * refused here, before it crosses to main.
+   */
+  async attach(slug: string, name: string, data: Uint8Array): Promise<AttachmentResult> {
+    if (data.byteLength === 0) return { ok: false, error: 'empty' };
+    if (data.byteLength > ATTACHMENT_MAX_BYTES) return { ok: false, error: 'too_large' };
+    if (!this.api) return { ok: false, error: 'io' };
+    const result = await this.api.attachFile({ slug, name, data });
+    // The note now has one more file: the open note's count is what decides whether delete asks.
+    const open = this.open();
+    if (result.ok && open?.slug === slug) {
+      this.open.set({ ...open, attachments: (open.attachments ?? 0) + 1 });
+    }
+    return result;
+  }
+
+  /** Deletes the note; `deleteAttachments` also removes its `.assets` folder, otherwise it is kept. */
+  async remove(slug: string, deleteAttachments = false): Promise<void> {
     if (!this.api) return;
-    await this.api.deleteNote(slug);
+    if (deleteAttachments) await this.api.deleteNote(slug, true);
+    else await this.api.deleteNote(slug);
     this.open.set(null);
     this.missing.set(false);
     await this.load();

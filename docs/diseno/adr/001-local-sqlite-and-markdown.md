@@ -24,9 +24,18 @@ Data folder:
 ```
 OrquestadorPlus/
 ├── datos.db
-├── wiki/
-└── adjuntos/
+└── wiki/
+    ├── nota.md
+    ├── nota.assets/        images and files attached to nota.md
+    └── Sección/
+        ├── otra.md
+        └── otra.assets/
 ```
+
+Attachments live next to their note, in a folder named `<note>.assets/`, and are linked from
+the note with plain Markdown (`![captura](nota.assets/captura.png)`), so the wiki stays readable
+by Obsidian, Typora and AI tools. Renaming a note renames its folder; exporting includes the
+folders. Each attachment is limited to 10 MB.
 
 ## Alternatives considered
 

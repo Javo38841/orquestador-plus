@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import type { AttachmentResult } from '../../../../shared/attachments';
 import type { OrquestadorApi } from '../../../../shared/ipc';
 import type {
   Note,
@@ -35,6 +36,11 @@ function setup(result: NoteResult = { ok: true, note: note('A') }) {
     createNote: vi.fn(async () => result),
     updateNote: vi.fn(async () => result),
     deleteNote: vi.fn(async () => true),
+    attachFile: vi.fn(async (): Promise<AttachmentResult> => ({
+      ok: true,
+      link: '![a](A.assets/a.png)',
+      name: 'a.png',
+    })),
     listSkippedFiles: vi.fn(async (): Promise<SkippedFile[]> => []),
     openWikiFolder: vi.fn(async () => true),
     onWikiChanged: vi.fn((listener: () => void) => {
@@ -87,6 +93,35 @@ describe('WikiStore', () => {
     await store.remove('A');
     expect(api.deleteNote).toHaveBeenCalledWith('A');
     expect(store.current()).toBeNull();
+  });
+
+  it('CP-08-120: attach refuses an empty or oversized file before calling main', async () => {
+    const { store, api } = setup();
+    expect(await store.attach('A', 'a.png', new Uint8Array(0))).toEqual({
+      ok: false,
+      error: 'empty',
+    });
+    const big = new Uint8Array(10 * 1024 * 1024 + 1);
+    expect(await store.attach('A', 'a.png', big)).toEqual({ ok: false, error: 'too_large' });
+    expect(api.attachFile).not.toHaveBeenCalled();
+  });
+
+  it('CP-08-122: attach sends the note, name and bytes, and counts the file on the open note', async () => {
+    const { store, api } = setup();
+    await store.openNote('A');
+    const data = new Uint8Array([1, 2]);
+
+    const result = await store.attach('A', 'a.png', data);
+
+    expect(api.attachFile).toHaveBeenCalledWith({ slug: 'A', name: 'a.png', data });
+    expect(result).toEqual({ ok: true, link: '![a](A.assets/a.png)', name: 'a.png' });
+    expect(store.current()?.attachments).toBe(1);
+  });
+
+  it('CP-08-128: remove can ask main to delete the attachments too', async () => {
+    const { store, api } = setup();
+    await store.remove('A', true);
+    expect(api.deleteNote).toHaveBeenCalledWith('A', true);
   });
 
   it('reports not_found when opening a note that disappeared', async () => {

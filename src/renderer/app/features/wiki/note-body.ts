@@ -1,8 +1,19 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+  untracked,
+} from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { SNIPPET_CONTENT_MAX_LENGTH, SNIPPET_TITLE_MAX_LENGTH } from '../../../../shared/snippets';
-import { headingIds, parseMarkdown, type CalloutKind } from '../../../../shared/wiki';
+import { localTarget } from '../../../../shared/attachments';
+import { headingIds, inlineParts, parseMarkdown, type CalloutKind } from '../../../../shared/wiki';
+import { DESKTOP_API } from '../../core/desktop-api';
 import { SnippetsStore } from '../snippets/snippets.store';
 
 /** Icon and theme-variable classes per callout; written out so Tailwind sees every class. */
@@ -173,6 +184,46 @@ const CALLOUT_STYLE: Record<CalloutKind, { icon: string; box: string; label: str
           @case ('code') {
             <code class="rounded bg-canvas px-1 text-sm">{{ part.text }}</code>
           }
+          @case ('image') {
+            @if (imageState(part.src); as state) {
+              @if (state.url) {
+                <img
+                  class="my-1 inline-block max-h-96 max-w-full rounded-md border border-line"
+                  [src]="state.url"
+                  [alt]="part.alt"
+                  data-testid="note-image"
+                />
+              } @else {
+                <span
+                  class="text-warn italic"
+                  [attr.data-testid]="state.blocked ? 'note-image-blocked' : 'note-image-missing'"
+                  >{{
+                    (state.blocked ? 'wiki.attach.imageBlocked' : 'wiki.attach.imageMissing')
+                      | transloco
+                  }}</span
+                >
+              }
+            }
+          }
+          @case ('file') {
+            @if (isLocal(part.src)) {
+              <button
+                type="button"
+                class="text-accent underline"
+                data-testid="note-file"
+                (click)="openFile(part.src)"
+              >
+                {{ part.label }}
+              </button>
+            } @else {
+              <span
+                class="text-muted underline decoration-dotted"
+                data-testid="note-link-blocked"
+                [title]="'wiki.attach.linkBlocked' | transloco"
+                >{{ part.label }}</span
+              >
+            }
+          }
           @case ('link') {
             @if (slugs().get(part.key); as slug) {
               <button
@@ -203,8 +254,71 @@ export class NoteBody {
   readonly slugs = input.required<ReadonlyMap<string, string>>();
   /** Title given to a saved snippet when its code block has none. */
   readonly pageTitle = input('');
+  /** File name of the note shown: its images and files are looked up next to it. Empty = unsaved. */
+  readonly slug = input('');
   readonly openLink = output<string>();
   private readonly snippets = inject(SnippetsStore);
+  private readonly api = inject(DESKTOP_API);
+  /** Data URL by link target; null = could not be loaded. A target missing here is still loading. */
+  private readonly images = signal<Record<string, string | null>>({});
+  private requested = new Set<string>();
+  private cacheSlug = '';
+
+  constructor() {
+    // Images come from main as data URLs: the page itself never fetches anything (RNF-01).
+    effect(() => {
+      const slug = this.slug();
+      const sources = this.imageSources();
+      untracked(() => {
+        if (slug !== this.cacheSlug) {
+          this.cacheSlug = slug;
+          this.requested = new Set();
+          this.images.set({});
+        }
+        for (const src of sources) this.loadImage(slug, src);
+      });
+    });
+  }
+
+  private readonly imageSources = computed(() =>
+    inlineParts(this.blocks()).flatMap((p) =>
+      p.type === 'image' && localTarget(p.src) !== null ? [p.src] : [],
+    ),
+  );
+
+  private loadImage(slug: string, src: string): void {
+    if (this.requested.has(src)) return;
+    this.requested.add(src);
+    if (!this.api || slug === '') {
+      this.images.update((all) => ({ ...all, [src]: null }));
+      return;
+    }
+    void this.api
+      .readAttachment(slug, src)
+      .then((result) => (result.ok ? result.dataUrl : null))
+      .catch(() => null)
+      .then((url) => {
+        if (slug === this.cacheSlug) this.images.update((all) => ({ ...all, [src]: url }));
+      });
+  }
+
+  /** What to show for an image: its URL, a "missing" mark or a "blocked" mark; null while loading. */
+  protected imageState(src: string): { url?: string; blocked?: boolean } | null {
+    if (localTarget(src) === null) return { blocked: true };
+    const url = this.images()[src];
+    if (url === undefined) return null;
+    return url === null ? {} : { url };
+  }
+
+  protected isLocal(src: string): boolean {
+    return localTarget(src) !== null;
+  }
+
+  protected openFile(src: string): void {
+    const slug = this.slug();
+    if (slug !== '') void this.api?.openAttachment(slug, src).catch(() => undefined);
+  }
+
   protected callout(kind: CalloutKind): (typeof CALLOUT_STYLE)[CalloutKind] {
     return CALLOUT_STYLE[kind];
   }

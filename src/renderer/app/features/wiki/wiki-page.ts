@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
+import { ATTACHMENT_MAX_BYTES, type AttachmentError } from '../../../../shared/attachments';
 import {
   extractToc,
   pageNavigation,
@@ -38,6 +39,14 @@ export const NOTE_ERROR_KEYS: Record<NoteError, string> = {
   not_found: 'wiki.errors.notFound',
   conflict: 'wiki.errors.conflict',
   io: 'wiki.errors.io',
+};
+
+export const ATTACH_ERROR_KEYS: Record<AttachmentError, string> = {
+  invalid: 'wiki.attach.errors.invalid',
+  empty: 'wiki.attach.errors.empty',
+  too_large: 'wiki.attach.errors.tooLarge',
+  not_found: 'wiki.attach.errors.notFound',
+  io: 'wiki.attach.errors.io',
 };
 
 export const SKIPPED_REASON_KEYS: Record<SkippedReason, string> = {
@@ -272,10 +281,14 @@ interface Draft {
               <label class="block text-sm">
                 <span class="text-muted">{{ 'wiki.content' | transloco }}</span>
                 <textarea
+                  #contentField
                   class="mt-1 h-80 w-full rounded-md border border-line bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none focus:border-accent"
                   data-testid="note-content"
                   [value]="d.content"
                   (input)="patch({ content: $any($event.target).value })"
+                  (paste)="onPaste($event)"
+                  (dragover)="onDragOver($event)"
+                  (drop)="onDrop($event)"
                 ></textarea>
               </label>
               <div class="text-sm">
@@ -288,9 +301,40 @@ interface Draft {
                     [content]="d.content"
                     [slugs]="store.slugByKey()"
                     [pageTitle]="d.title"
+                    [slug]="attachSlug() ?? ''"
                   />
                 </div>
               </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-3 text-sm">
+              <button
+                type="button"
+                class="rounded-md border border-line px-3 py-1.5 outline-none hover:border-accent focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
+                data-testid="note-attach"
+                [disabled]="attachSlug() === null"
+                [title]="
+                  (attachSlug() === null ? 'wiki.attach.saveFirst' : 'wiki.attach.hint') | transloco
+                "
+                (click)="filePicker.click()"
+              >
+                {{ 'wiki.attach.button' | transloco }}
+              </button>
+              <input
+                #filePicker
+                type="file"
+                multiple
+                class="hidden"
+                data-testid="note-attach-input"
+                (change)="onPick($event)"
+              />
+              <span class="text-xs text-muted">{{
+                (attachSlug() === null ? 'wiki.attach.saveFirst' : 'wiki.attach.hint') | transloco
+              }}</span>
+              @if (attachError(); as key) {
+                <span class="text-warn" role="alert" data-testid="attach-error">{{
+                  key | transloco
+                }}</span>
+              }
             </div>
             @if (conflict()) {
               <div
@@ -379,7 +423,30 @@ interface Draft {
                 >
                   {{ 'wiki.edit' | transloco }}
                 </button>
-                @if (confirmingDelete()) {
+                @if (askingAttachments()) {
+                  <span
+                    class="self-center text-warn"
+                    role="alertdialog"
+                    data-testid="attachments-ask"
+                    >{{ 'wiki.attach.deleteAsk' | transloco }}</span
+                  >
+                  <button
+                    type="button"
+                    class="rounded-md border border-warn px-3 py-1 text-warn"
+                    data-testid="attachments-delete-yes"
+                    (click)="finishRemove(true)"
+                  >
+                    {{ 'wiki.attach.deleteYes' | transloco }}
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md border border-line px-3 py-1"
+                    data-testid="attachments-delete-no"
+                    (click)="finishRemove(false)"
+                  >
+                    {{ 'wiki.attach.deleteNo' | transloco }}
+                  </button>
+                } @else if (confirmingDelete()) {
                   <button
                     type="button"
                     class="rounded-md border border-warn px-3 py-1 text-warn"
@@ -406,6 +473,7 @@ interface Draft {
                   [content]="note.content"
                   [slugs]="store.slugByKey()"
                   [pageTitle]="note.title"
+                  [slug]="note.slug"
                   (openLink)="guard(openNote, $event)"
                 />
                 <footer class="mt-8 space-y-4 border-t border-line pt-4" data-testid="page-footer">
@@ -530,6 +598,12 @@ export class WikiPage implements OnInit {
   protected readonly draft = signal<Draft | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly confirmingDelete = signal(false);
+  /** True while the user is asked whether to delete the attachments of the note being deleted. */
+  protected readonly askingAttachments = signal(false);
+  protected readonly attachError = signal<string | null>(null);
+  /** Slug of the note being edited; null while creating a new one (nothing to attach to yet). */
+  protected readonly attachSlug = signal<string | null>(null);
+  private readonly contentField = viewChild<ElementRef<HTMLTextAreaElement>>('contentField');
   protected readonly conflict = signal(false);
   protected readonly showSkipped = signal(false);
   protected readonly creatingSection = signal(false);
@@ -545,7 +619,6 @@ export class WikiPage implements OnInit {
   });
   /** Action waiting for the user to confirm discarding unsaved changes. */
   protected readonly pending = signal<(() => void) | null>(null);
-  /** Slug of the note being edited; null while creating a new one. */
   private editingSlug: string | null = null;
 
   private readonly dirty = computed(() => {
@@ -622,6 +695,7 @@ export class WikiPage implements OnInit {
 
   protected readonly startNew = (): void => {
     this.editingSlug = null;
+    this.attachSlug.set(null);
     this.beginEdit({ title: '', content: '' });
   };
 
@@ -683,11 +757,14 @@ export class WikiPage implements OnInit {
     const note = this.store.current();
     if (!note) return;
     this.editingSlug = note.slug;
+    this.attachSlug.set(note.slug);
     this.beginEdit({ title: note.title, content: note.content });
   }
 
   private beginEdit(draft: Draft): void {
     this.confirmingDelete.set(false);
+    this.askingAttachments.set(false);
+    this.attachError.set(null);
     this.error.set(null);
     this.conflict.set(false);
     this.draft.set(draft);
@@ -700,6 +777,9 @@ export class WikiPage implements OnInit {
     this.error.set(null);
     this.conflict.set(false);
     this.confirmingDelete.set(false);
+    this.askingAttachments.set(false);
+    this.attachError.set(null);
+    this.attachSlug.set(null);
     this.pending.set(null);
   }
 
@@ -767,11 +847,93 @@ export class WikiPage implements OnInit {
     if (slug !== null) void this.store.openNote(slug);
   }
 
+  /** Confirmed delete: a note with attachments first asks whether they go too. */
   protected async remove(): Promise<void> {
     const note = this.store.current();
     if (!note) return;
-    await this.store.remove(note.slug);
+    if ((note.attachments ?? 0) > 0) {
+      this.askingAttachments.set(true);
+      return;
+    }
+    await this.finishRemove(false);
+  }
+
+  protected async finishRemove(deleteAttachments: boolean): Promise<void> {
+    const note = this.store.current();
+    if (!note) return;
+    await this.store.remove(note.slug, deleteAttachments);
     this.confirmingDelete.set(false);
+    this.askingAttachments.set(false);
+  }
+
+  protected onPaste(event: ClipboardEvent): void {
+    const files = Array.from(event.clipboardData?.files ?? []);
+    if (files.length === 0) return; // plain text pastes as usual
+    event.preventDefault();
+    void this.attachFiles(files);
+  }
+
+  protected onDragOver(event: DragEvent): void {
+    if (event.dataTransfer?.types.includes('Files')) event.preventDefault();
+  }
+
+  protected onDrop(event: DragEvent): void {
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    if (files.length === 0) return;
+    event.preventDefault();
+    void this.attachFiles(files);
+  }
+
+  protected onPick(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = ''; // so the same file can be picked again
+    if (files.length > 0) void this.attachFiles(files);
+  }
+
+  /** Attaches each file to the note being edited and inserts the links at the cursor. */
+  private async attachFiles(files: File[]): Promise<void> {
+    const slug = this.attachSlug();
+    this.attachError.set(null);
+    if (slug === null) {
+      this.attachError.set('wiki.attach.saveFirst');
+      return;
+    }
+    const links: string[] = [];
+    try {
+      for (const file of files) {
+        if (file.size > ATTACHMENT_MAX_BYTES) {
+          this.attachError.set(ATTACH_ERROR_KEYS.too_large);
+          break;
+        }
+        const result = await this.store.attach(
+          slug,
+          file.name,
+          new Uint8Array(await file.arrayBuffer()),
+        );
+        if (!result.ok) {
+          this.attachError.set(ATTACH_ERROR_KEYS[result.error]);
+          break;
+        }
+        links.push(result.link);
+      }
+    } catch {
+      this.attachError.set(ATTACH_ERROR_KEYS.io);
+    }
+    if (links.length > 0 && this.attachSlug() === slug) this.insertAtCursor(links.join('\n'));
+  }
+
+  private insertAtCursor(text: string): void {
+    const field = this.contentField()?.nativeElement;
+    const content = this.draft()?.content ?? '';
+    const start = field?.selectionStart ?? content.length;
+    const end = field?.selectionEnd ?? start;
+    this.patch({ content: content.slice(0, start) + text + content.slice(end) });
+    const caret = start + text.length;
+    setTimeout(() => {
+      field?.focus();
+      field?.setSelectionRange(caret, caret);
+    });
   }
 
   protected longDate(iso: string): string {

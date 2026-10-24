@@ -15,6 +15,7 @@ import type {
   SectionResult,
   SectionSummary,
 } from './wiki';
+import type { AttachmentImageResult, AttachmentInput, AttachmentResult } from './attachments';
 import type { BoardSelection } from './board';
 import type { Project, ProjectResult, Task, TaskInput, TaskResult, TaskStatus } from './tasks';
 
@@ -50,6 +51,9 @@ export const IpcChannel = {
   createNote: 'notes:create',
   updateNote: 'notes:update',
   deleteNote: 'notes:delete',
+  attachFile: 'notes:attach',
+  readAttachment: 'notes:read-attachment',
+  openAttachment: 'notes:open-attachment',
   listBugs: 'bugs:list',
   createBug: 'bugs:create',
   updateBug: 'bugs:update',
@@ -137,7 +141,14 @@ export interface OrquestadorApi {
   createNote(input: NoteInput): Promise<NoteResult>;
   /** Saves content and, if the title changed, renames the note. */
   updateNote(slug: string, input: NoteInput): Promise<NoteResult>;
-  deleteNote(slug: string): Promise<boolean>;
+  /** Deletes the note; with `deleteAttachments` also its `.assets` folder, otherwise that is kept. */
+  deleteNote(slug: string, deleteAttachments?: boolean): Promise<boolean>;
+  /** Copies a file into the note's `.assets` folder and returns the Markdown link to insert (RF-08). */
+  attachFile(input: AttachmentInput): Promise<AttachmentResult>;
+  /** An image linked from a note as a `data:` URL; `src` is the link target as written in the note. */
+  readAttachment(slug: string, src: string): Promise<AttachmentImageResult>;
+  /** Opens a file linked from a note with the system app; main only opens files inside `wiki/`. */
+  openAttachment(slug: string, src: string): Promise<boolean>;
   /** Bugs, newest first (RF-09). */
   listBugs(): Promise<Bug[]>;
   createBug(input: BugInput): Promise<BugResult>;

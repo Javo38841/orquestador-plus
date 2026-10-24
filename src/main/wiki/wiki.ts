@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
+import { ASSETS_SUFFIX, rewriteAssetLinks } from '../../shared/attachments';
 import {
   extractLinks,
   isValidSection,
@@ -78,7 +79,7 @@ function filePath(wiki: Wiki, slug: string, section: string | null = null): stri
 }
 
 /** True if `file` exists and, once symlinks are resolved, is still inside `wiki/`. */
-function isInsideWiki(wiki: Wiki, file: string): boolean {
+export function isInsideWiki(wiki: Wiki, file: string): boolean {
   try {
     const root = fs.realpathSync(wiki.dir);
     const real = fs.realpathSync(file);
@@ -91,6 +92,40 @@ function isInsideWiki(wiki: Wiki, file: string): boolean {
 /** `_section.md` holds the title of a folder, so a note can never take that name. */
 function isReservedName(slug: string): boolean {
   return slug.toLowerCase() + EXTENSION === SECTION_FILE;
+}
+
+/**
+ * The file of a note by slug, for work on its attachments. `invalid` for a bad slug or a note that is a
+ * symbolic link; `not_found` when the note or its file is gone.
+ */
+export function locateNote(wiki: Wiki, slug: unknown): { file: string } | 'invalid' | 'not_found' {
+  if (!isValidSlug(slug)) return 'invalid';
+  const row = findBySlug(wiki.db, slug);
+  if (!row) return 'not_found';
+  try {
+    const file = filePath(wiki, row.slug, row.section);
+    const stat = fs.lstatSync(file);
+    if (stat.isSymbolicLink()) return 'invalid';
+    return stat.isFile() && isInsideWiki(wiki, file) ? { file } : 'not_found';
+  } catch (error) {
+    return error instanceof WikiError ? 'invalid' : 'not_found';
+  }
+}
+
+/** Folder of the attachments of the note whose file is `noteFile`. */
+export function assetsDirOf(noteFile: string): string {
+  return noteFile.slice(0, -EXTENSION.length) + ASSETS_SUFFIX;
+}
+
+/** Number of files in a note's assets folder; 0 if there is none. Symbolic links do not count. */
+function countAttachments(noteFile: string): number {
+  try {
+    const dir = assetsDirOf(noteFile);
+    if (fs.lstatSync(dir).isSymbolicLink()) return 0;
+    return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile()).length;
+  } catch {
+    return 0;
+  }
 }
 
 /** Temp file next to the target; its name never ends in `.md`, so it is never a note. */
@@ -360,8 +395,10 @@ export function getNote(wiki: Wiki, slug: unknown): NoteResult {
        ORDER BY n.title_key`,
     )
     .all(row.id, row.id) as NoteRow[];
+  const attachments = countAttachments(filePath(wiki, row.slug, row.section));
   const note: Note = {
     ...toSummary(row),
+    ...(attachments > 0 && { attachments }),
     content: parseNote(text).content,
     hash: hashText(text),
     links,
@@ -457,8 +494,13 @@ export function updateNote(
   const renamed = checked.title !== current.title;
   const nextSlug = renamed ? slugFromTitle(checked.title) : current.slug;
   const stamp = now.toISOString();
+  // Renaming the note moves its assets folder, so the links in the body follow it.
+  const content = renamed
+    ? rewriteAssetLinks(checked.content, current.slug, nextSlug)
+    : checked.content;
   let written = false;
   let sameFile = false;
+  const moved: { from?: string; to?: string } = {};
 
   try {
     wiki.db.transaction(() => {
@@ -471,28 +513,32 @@ export function updateNote(
       wiki.db
         .prepare('UPDATE notes SET slug = ?, title = ?, title_key = ?, updated_at = ? WHERE id = ?')
         .run(nextSlug, checked.title, key, stamp, current.id);
-      indexLinks(wiki.db, current.id, checked.content);
-      indexBody(wiki.db, current.id, toLf(checked.content));
+      indexLinks(wiki.db, current.id, content);
+      indexBody(wiki.db, current.id, toLf(content));
       const existing = readIfExists(filePath(wiki, current.slug, current.section));
       writeFileAtomic(
         target,
         existing === null
-          ? serializeNote(checked.title, current.created_at, stamp, checked.content, {
+          ? serializeNote(checked.title, current.created_at, stamp, content, {
               order: current.sort_order,
               description: current.description,
             })
           : rewriteNote(
               existing,
               { title: checked.title, created: current.created_at, updated: stamp },
-              checked.content,
+              content,
             ),
       );
       written = true;
+      if (nextSlug !== current.slug) {
+        Object.assign(moved, moveAssets(filePath(wiki, current.slug, current.section), target));
+      }
       if (nextSlug !== current.slug && !sameFile) {
         fs.rmSync(filePath(wiki, current.slug, current.section));
       }
     })();
   } catch (error) {
+    if (moved.from && moved.to) fs.renameSync(moved.to, moved.from);
     if (written && nextSlug !== current.slug && !sameFile)
       fs.rmSync(filePath(wiki, nextSlug, current.section), { force: true });
     return failure(error);
@@ -500,14 +546,38 @@ export function updateNote(
   return getNote(wiki, nextSlug);
 }
 
-/** Deletes file and index entry together; notes that linked to it keep a pending link. */
-export function deleteNote(wiki: Wiki, slug: unknown): boolean {
+/**
+ * Moves `<old>.assets` to `<new>.assets` when the note has one. Returns the move, to undo it, or null if
+ * there was nothing to move. A folder already in the new place is a `duplicate`.
+ */
+function moveAssets(oldFile: string, newFile: string): { from: string; to: string } | null {
+  const from = assetsDirOf(oldFile);
+  const to = assetsDirOf(newFile);
+  try {
+    if (!fs.lstatSync(from).isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  if (fs.existsSync(to) && !isSameFile(from, to)) throw new WikiError('duplicate');
+  fs.renameSync(from, to);
+  return { from, to };
+}
+
+/**
+ * Deletes file and index entry together; notes that linked to it keep a pending link. The assets folder
+ * goes too only when `deleteAttachments` is true.
+ */
+export function deleteNote(wiki: Wiki, slug: unknown, deleteAttachments: unknown = false): boolean {
   if (!isValidSlug(slug)) return false;
+  if (typeof deleteAttachments !== 'boolean') return false;
   const row = findBySlug(wiki.db, slug);
   if (!row) return false;
   wiki.db.transaction(() => {
     wiki.db.prepare('DELETE FROM notes WHERE id = ?').run(row.id);
-    fs.rmSync(filePath(wiki, row.slug, row.section), { force: true });
+    const file = filePath(wiki, row.slug, row.section);
+    fs.rmSync(file, { force: true });
+    // A symbolic link is unlinked, never followed: what it points at is not the note's own.
+    if (deleteAttachments) fs.rmSync(assetsDirOf(file), { recursive: true, force: true });
     if (row.section !== null) forgetEmptySection(wiki, row.section);
   })();
   return true;

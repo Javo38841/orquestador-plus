@@ -323,3 +323,27 @@ describe('pageNavigation', () => {
     expect(pageNavigation(tree, 'nope')).toEqual({ previous: null, next: null });
   });
 });
+
+describe('attachment links in Markdown', () => {
+  it('CP-08-123: parses an image and a file link inline', () => {
+    const [block] = parseMarkdown(
+      'Ver ![Captura](a.assets/c.png) y [manual](a.assets/m.pdf) y [[Otra]]',
+    );
+    expect(block).toMatchObject({
+      type: 'paragraph',
+      inline: [
+        { type: 'text', text: 'Ver ' },
+        { type: 'image', alt: 'Captura', src: 'a.assets/c.png' },
+        { type: 'text', text: ' y ' },
+        { type: 'file', label: 'manual', src: 'a.assets/m.pdf' },
+        { type: 'text', text: ' y ' },
+        { type: 'link', label: 'Otra', key: 'otra' },
+      ],
+    });
+  });
+
+  it('a section can never be named like an assets folder', () => {
+    expect(isValidSection('nota.assets')).toBe(false);
+    expect(isValidSection('Guías')).toBe(true);
+  });
+});
