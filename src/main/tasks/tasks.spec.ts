@@ -511,6 +511,7 @@ describe('recurring tasks (RF-06)', () => {
     expect(listTasks(db)[0]).toMatchObject({
       reminderAt: '2026-03-10T09:00',
       reminderNotifiedAt: null,
+      hiddenFromTodayAt: null,
     });
   });
 

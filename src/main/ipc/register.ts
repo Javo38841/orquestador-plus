@@ -13,6 +13,7 @@ import {
   deleteProject,
   deleteSeries,
   deleteTask,
+  hideFromToday,
   listProjects,
   listTags,
   listTasks,
@@ -113,6 +114,9 @@ export function registerIpcHandlers(
   );
   ipcMain.handle(IpcChannel.deleteTask, (_event, id: unknown) =>
     rearm(withDb((d) => deleteTask(d, id))),
+  );
+  ipcMain.handle(IpcChannel.hideFromToday, (_event, ids: unknown) =>
+    withDb((d) => hideFromToday(d, ids)),
   );
   ipcMain.handle(IpcChannel.deleteSeries, (_event, id: unknown) =>
     rearm(withDb((d) => deleteSeries(d, id))),

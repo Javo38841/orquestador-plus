@@ -6,14 +6,34 @@ export interface TodayGroups {
   today: Task[];
 }
 
-/** Unfinished tasks only: overdue first, then due today or marked "para hoy". */
+/**
+ * Completed on the local `today` and not taken off Hoy since ("Quitar de la lista" hides only the
+ * completion it follows).
+ */
+export function isDoneToday(task: Task, today: string): boolean {
+  if (task.status !== 'done' || task.completedAt === null) return false;
+  if (task.hiddenFromTodayAt !== null && task.hiddenFromTodayAt >= task.completedAt) return false;
+  return localDate(new Date(task.completedAt)) === today;
+}
+
+/**
+ * Unfinished tasks, plus the ones completed today (shown struck through until taken off the list):
+ * overdue first, then due today or marked "para hoy".
+ */
 export function todayGroups(tasks: Task[], now: Date = new Date()): TodayGroups {
   const today = localDate(now);
-  const pending = tasks.filter((t) => t.status !== 'done');
+  // The given order is kept: a task completed in place stays where it was.
+  const shown = tasks.filter((t) => t.status !== 'done' || isDoneToday(t, today));
+  const late = (t: Task) => isOverdue({ ...t, status: 'todo' }, today);
   return {
-    overdue: pending.filter((t) => isOverdue(t, today)),
-    today: pending.filter((t) => !isOverdue(t, today) && (t.dueDate === today || t.forToday)),
+    overdue: shown.filter(late),
+    today: shown.filter((t) => !late(t) && (t.dueDate === today || t.forToday)),
   };
+}
+
+/** Tasks of a group still to be done (completed ones are shown but not counted). */
+export function pendingOf(tasks: Task[]): Task[] {
+  return tasks.filter((t) => t.status !== 'done');
 }
 
 /** Unfinished tasks due tomorrow (local day). */

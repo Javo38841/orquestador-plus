@@ -35,6 +35,7 @@ export const IpcChannel = {
   setTaskStatus: 'tasks:set-status',
   setTaskForToday: 'tasks:set-for-today',
   deleteTask: 'tasks:delete',
+  hideFromToday: 'tasks:hide-from-today',
   deleteSeries: 'series:delete',
   listTags: 'tags:list',
   listProjects: 'projects:list',
@@ -110,6 +111,8 @@ export interface OrquestadorApi {
   setTaskStatus(id: number, status: TaskStatus): Promise<TaskResult>;
   setTaskForToday(id: number, forToday: boolean): Promise<TaskResult>;
   deleteTask(id: number): Promise<boolean>;
+  /** Takes completed tasks off Hoy without deleting them; returns how many were hidden. */
+  hideFromToday(ids: number[]): Promise<number>;
   /** Deletes a recurring series and its open instance; completed instances stay. */
   deleteSeries(id: number): Promise<boolean>;
   /** Tags used by at least one task, for suggestions and the filter. */

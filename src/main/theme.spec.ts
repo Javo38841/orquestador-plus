@@ -48,6 +48,12 @@ describe('theme', () => {
     expect(stylesCss).toMatch(/::-webkit-scrollbar\s*\{[^}]*background:\s*var\(--color-canvas\)/);
   });
 
+  it('CP-03-33: native select lists use the dark theme colors, not the white system ones', () => {
+    expect(stylesCss).toMatch(
+      /select option,\s*select optgroup\s*\{[^}]*background-color:\s*var\(--color-surface-raised\)[^}]*color:\s*var\(--color-ink\)/,
+    );
+  });
+
   it('CP-N17-19: every chip and badge text/background pair has at least 4.5:1 contrast', () => {
     for (const [name, { fg, bg }] of Object.entries(CHIP_VARIANTS)) {
       expect(contrast(theme.get(fg)!, theme.get(bg)!), name).toBeGreaterThanOrEqual(4.5);

@@ -50,7 +50,15 @@ export interface Task {
   reminderAt: string | null;
   /** ISO-8601 UTC timestamp of when the reminder fired; null while it has not. */
   reminderNotifiedAt: string | null;
+  /**
+   * ISO-8601 UTC timestamp of when it was taken off Hoy with "Quitar de la lista"; it only hides
+   * the completion it follows, so a task completed again shows once more.
+   */
+  hiddenFromTodayAt: string | null;
 }
+
+/** Most tasks "Limpiar completadas" takes off Hoy in one call. */
+export const HIDE_FROM_TODAY_MAX = 500;
 
 /** Fields the form sends. A new project is created by name together with the task. */
 export interface TaskInput {

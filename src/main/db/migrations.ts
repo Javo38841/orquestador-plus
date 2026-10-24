@@ -352,6 +352,14 @@ export const migrations: Migration[] = [
       END;
     `,
   },
+  {
+    version: 18,
+    name: 'tasks_hidden_from_today',
+    // "Quitar de la lista" in Hoy (#93): hides a completed task from Hoy without deleting it.
+    up: `
+      ALTER TABLE tasks ADD COLUMN hidden_from_today_at TEXT;
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {
