@@ -216,3 +216,41 @@ test('CP-08-131: an image attached while editing shows in the reading view and l
   const stored = path.join(dataDir, 'wiki', 'Instalación.assets', 'captura.png');
   expect(fs.readFileSync(stored)).toEqual(PIXEL);
 });
+
+test('CP-08-149: moving a note with an image to an empty section keeps the image and moves its .assets', async () => {
+  const { page, dataDir } = launched;
+  await createNote(page, 'Instalación', 'Pasos:\n');
+  await page.getByTestId('note-edit').click();
+  await page.getByTestId('note-attach-input').setInputFiles({
+    name: 'captura.png',
+    mimeType: 'image/png',
+    buffer: PIXEL,
+  });
+  await page.getByTestId('note-save').click();
+  await expect(page.getByTestId('note-image')).toBeVisible();
+
+  await page.getByTestId('new-section').click();
+  await page.getByTestId('new-section-name').fill('Manuales');
+  await page.getByTestId('new-section-save').click();
+  const section = page.getByTestId('wiki-section').filter({ hasText: 'Manuales' });
+  await expect(section).toBeVisible();
+
+  await page.getByTestId('note-move').click();
+  await page.getByTestId('move-target').selectOption('Manuales');
+  await page.getByTestId('move-confirm').click();
+
+  await expect(section.getByTestId('note-item')).toHaveText(/Instalación/);
+  await expect(page.getByTestId('breadcrumb-section')).toHaveText('Manuales');
+  const image = page.getByTestId('note-image');
+  await expect(image).toBeVisible();
+  await expect
+    .poll(() => image.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+  const wiki = path.join(dataDir, 'wiki');
+  expect(fs.existsSync(path.join(wiki, 'Manuales', 'Instalación.md'))).toBe(true);
+  expect(fs.existsSync(path.join(wiki, 'Manuales', 'Instalación.assets', 'captura.png'))).toBe(
+    true,
+  );
+  expect(fs.existsSync(path.join(wiki, 'Instalación.md'))).toBe(false);
+  expect(fs.existsSync(path.join(wiki, 'Instalación.assets'))).toBe(false);
+});

@@ -49,6 +49,7 @@ interface Fixtures {
   notesByContent?: Record<string, Note>;
   skipped?: SkippedFile[];
   query?: Record<string, string>;
+  moveResult?: NoteResult;
 }
 
 async function render(
@@ -70,6 +71,13 @@ async function render(
     createNote: vi.fn(async () => createResult),
     updateNote: vi.fn(async (): Promise<NoteResult> => ({ ok: true, note: noteA })),
     deleteNote: vi.fn(async () => true),
+    moveNote: vi.fn(
+      async (): Promise<NoteResult> =>
+        fixtures.moveResult ?? {
+          ok: true,
+          note: { ...noteA, slug: 'Manuales/A', section: 'Manuales' },
+        },
+    ),
     attachFile: vi.fn(async (): Promise<AttachmentResult> => ({
       ok: true,
       link: '![captura](A.assets/captura.png)',
@@ -1147,5 +1155,89 @@ describe('WikiPage with nested folders (#89)', () => {
     const item = el.querySelector('[data-testid="skipped-item"]')!.textContent!;
     expect(item).toContain('a/b/c/d/e/f');
     expect(item).toContain('Carpeta demasiado profunda');
+  });
+
+  describe('moving pages (#99)', () => {
+    const fixtures: Fixtures = {
+      notes: [summary('A'), { ...summary('B'), section: 'Guías' }],
+      sections: [
+        { name: 'Guías', title: 'Guías' },
+        { name: 'Manuales', title: 'Manuales' },
+      ],
+    };
+    // jsdom has no DragEvent: a plain event carrying the part of it the tree reads.
+    const dragEvent = (type: string): Event => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', {
+        value: { setData: () => undefined, effectAllowed: '', dropEffect: '' },
+      });
+      return event;
+    };
+    const dropOn = async (
+      el: HTMLElement,
+      settle: () => Promise<void>,
+      page: number,
+      target: Element,
+    ) => {
+      const item = el.querySelectorAll('[data-testid="note-item"]')[page];
+      item.dispatchEvent(dragEvent('dragstart'));
+      await settle();
+      target.dispatchEvent(dragEvent('drop'));
+      await settle();
+    };
+
+    it('CP-08-143: dropping a page on a section asks main to move it there', async () => {
+      const { api, el, settle } = await render(undefined, fixtures);
+      const row = el.querySelectorAll('[data-testid="wiki-section-row"]')[1];
+      await dropOn(el, settle, 0, row);
+      expect(api.moveNote).toHaveBeenCalledWith('A', 'Manuales');
+    });
+
+    it('CP-08-145: the page being read stays open and the breadcrumbs show its new path', async () => {
+      const { el, click, settle } = await render(undefined, fixtures);
+      await click('note-item', 0);
+      const row = el.querySelectorAll('[data-testid="wiki-section-row"]')[1];
+      await dropOn(el, settle, 0, row);
+      expect(el.querySelector('[data-testid="note-view"]')).not.toBeNull();
+      expect(el.querySelector('[data-testid="breadcrumb-section"]')?.textContent).toBe('Manuales');
+    });
+
+    it('CP-08-146: moving the page being edited with unsaved changes asks first; cancelling moves nothing', async () => {
+      const { api, el, click, type, settle } = await render(undefined, fixtures);
+      await click('note-item', 0);
+      await click('note-edit');
+      await type('note-title', 'A cambiada');
+      await click('note-move', 0);
+      (el.querySelector('[data-testid="move-target"]') as HTMLSelectElement).value = 'Manuales';
+      await click('move-confirm');
+      expect(el.querySelector('[data-testid="discard-confirm"]')).not.toBeNull();
+      expect(api.moveNote).not.toHaveBeenCalled();
+
+      await click('discard-no');
+      expect(api.moveNote).not.toHaveBeenCalled();
+      expect(el.querySelector('[data-testid="note-editor"]')).not.toBeNull();
+
+      await click('note-move', 0);
+      (el.querySelector('[data-testid="move-target"]') as HTMLSelectElement).value = 'Manuales';
+      await click('move-confirm');
+      await click('discard-yes');
+      await settle();
+      expect(api.moveNote).toHaveBeenCalledWith('A', 'Manuales');
+    });
+
+    it('CP-08-148: a failed move shows the Spanish message and the tree does not change', async () => {
+      const { api, el, settle } = await render(
+        { ok: true, note: noteB },
+        { ...fixtures, moveResult: { ok: false, error: 'duplicate' } },
+      );
+      const before = el.querySelector('[data-testid="note-list"]')!.textContent;
+      const row = el.querySelectorAll('[data-testid="wiki-section-row"]')[1];
+      await dropOn(el, settle, 0, row);
+      expect(el.querySelector('[data-testid="move-error"]')?.textContent).toContain(
+        'Ya hay una página con ese nombre en la sección de destino',
+      );
+      expect(el.querySelector('[data-testid="note-list"]')!.textContent).toBe(before);
+      expect(api.listNotes).toHaveBeenCalledTimes(1);
+    });
   });
 });

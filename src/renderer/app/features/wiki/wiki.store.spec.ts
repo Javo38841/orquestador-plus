@@ -36,6 +36,10 @@ function setup(result: NoteResult = { ok: true, note: note('A') }) {
     createNote: vi.fn(async () => result),
     updateNote: vi.fn(async () => result),
     deleteNote: vi.fn(async () => true),
+    moveNote: vi.fn(async (): Promise<NoteResult> => ({
+      ok: true,
+      note: { ...note('Guías/A'), section: 'Guías' },
+    })),
     attachFile: vi.fn(async (): Promise<AttachmentResult> => ({
       ok: true,
       link: '![a](A.assets/a.png)',
@@ -227,5 +231,23 @@ describe('WikiStore', () => {
       expect(await store.createSection('Sub', 'Otra')).toBeNull();
       expect(api.createSection).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('CP-08-145: moving the open page keeps it open under its new path and reloads the tree', async () => {
+    const { store, api } = setup();
+    await store.openNote('A');
+    expect(await store.move('A', 'Guías')).toBeNull();
+    expect(api.moveNote).toHaveBeenCalledWith('A', 'Guías');
+    expect(store.current()?.slug).toBe('Guías/A');
+    expect(api.listNotes).toHaveBeenCalled();
+  });
+
+  it('CP-08-148: a move that main rejects returns the error and changes nothing', async () => {
+    const { store, api } = setup();
+    api.moveNote.mockResolvedValueOnce({ ok: false, error: 'duplicate' });
+    await store.openNote('A');
+    expect(await store.move('A', 'Guías')).toBe('duplicate');
+    expect(store.current()?.slug).toBe('A');
+    expect(api.listNotes).not.toHaveBeenCalled();
   });
 });

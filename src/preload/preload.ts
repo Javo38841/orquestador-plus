@@ -32,6 +32,7 @@ const api: OrquestadorApi = {
   getNote: (slug) => ipcRenderer.invoke(IpcChannel.getNote, slug),
   createNote: (input) => ipcRenderer.invoke(IpcChannel.createNote, input),
   updateNote: (slug, input) => ipcRenderer.invoke(IpcChannel.updateNote, slug, input),
+  moveNote: (slug, section) => ipcRenderer.invoke(IpcChannel.moveNote, slug, section),
   deleteNote: (slug, deleteAttachments) =>
     ipcRenderer.invoke(IpcChannel.deleteNote, slug, deleteAttachments),
   attachFile: (input) => ipcRenderer.invoke(IpcChannel.attachFile, input),

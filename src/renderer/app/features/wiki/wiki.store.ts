@@ -178,6 +178,19 @@ export class WikiStore {
     return result;
   }
 
+  /**
+   * Moves a page, with its attachments, to another section (`null` = the root). The open page stays open
+   * under its new path. Resolves to the error, or null on success; on error nothing changes.
+   */
+  async move(slug: string, section: string | null): Promise<NoteError | null> {
+    if (!this.api) return null;
+    const result = await this.api.moveNote(slug, section);
+    if (!result.ok) return result.error;
+    if (this.open()?.slug === slug) this.open.set(result.note);
+    await this.load();
+    return null;
+  }
+
   /** Deletes the note; `deleteAttachments` also removes its `.assets` folder, otherwise it is kept. */
   async remove(slug: string, deleteAttachments = false): Promise<void> {
     if (!this.api) return;

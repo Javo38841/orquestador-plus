@@ -46,6 +46,7 @@ function fakeApi(overrides: Partial<AppInfo> = {}, bugs: Bug[] = []): Orquestado
     createNote: async () => ({ ok: false, error: 'empty' }),
     updateNote: async () => ({ ok: false, error: 'not_found' }),
     deleteNote: async () => false,
+    moveNote: async () => ({ ok: false, error: 'not_found' }),
     attachFile: async () => ({ ok: false, error: 'io' }),
     readAttachment: async () => ({ ok: false, error: 'not_found' }),
     openAttachment: async () => false,

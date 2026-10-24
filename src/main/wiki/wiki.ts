@@ -40,6 +40,7 @@ interface NoteRow {
   id: number;
   slug: string;
   title: string;
+  title_key: string;
   created_at: string;
   updated_at: string;
   section: string | null;
@@ -600,6 +601,67 @@ function moveAssets(oldFile: string, newFile: string): { from: string; to: strin
   if (fs.existsSync(to) && !isSameFile(from, to)) throw new WikiError('duplicate');
   fs.renameSync(from, to);
   return { from, to };
+}
+
+/**
+ * True if `section` is a real folder under `wiki/` (every level a directory, no symbolic link on the way).
+ */
+function isRealSection(wiki: Wiki, section: string): boolean {
+  try {
+    for (const folder of sectionChain(section)) {
+      const stat = fs.lstatSync(sectionDir(wiki, folder));
+      if (!stat.isDirectory()) return false;
+    }
+    return isInsideWiki(wiki, sectionDir(wiki, section));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Moves a note, with its `.assets` folder, to another section (`null` = the root of `wiki/`). The file is
+ * renamed, never rewritten, so frontmatter and body stay byte for byte as they were. A name already taken
+ * in the target moves nothing; the same section is a no-op. Index and disk change together: on any
+ * failure the files go back where they were (RNF-08).
+ */
+export function moveNote(wiki: Wiki, slug: unknown, target: unknown): NoteResult {
+  if (!isValidNotePath(slug)) return { ok: false, error: 'invalid' };
+  if (target !== null && !isValidSectionPath(target)) return { ok: false, error: 'invalid' };
+  const row = findBySlug(wiki.db, slug);
+  if (!row) return { ok: false, error: 'not_found' };
+  if (target !== null && !isRealSection(wiki, target)) return { ok: false, error: 'invalid' };
+  if (target === row.section) return getNote(wiki, slug);
+
+  const located = locateNote(wiki, slug);
+  if (typeof located === 'string') return { ok: false, error: located };
+  const nextSlug = joinSection(target, slugBaseName(slug));
+  let movedFile: { from: string; to: string } | null = null;
+  let movedAssets: { from: string; to: string } | null = null;
+
+  try {
+    const to = filePath(wiki, nextSlug);
+    wiki.db.transaction(() => {
+      if (conflicts(wiki, row.id, target, nextSlug, row.title_key)) {
+        throw new WikiError('duplicate');
+      }
+      // Nothing is replaced: a file or an assets folder already there (even unindexed) stops the move.
+      if (fs.existsSync(to) || fs.existsSync(assetsDirOf(to))) throw new WikiError('duplicate');
+      wiki.db
+        .prepare('UPDATE notes SET slug = ?, section = ? WHERE id = ?')
+        .run(nextSlug, target, row.id);
+      fs.renameSync(located.file, to);
+      movedFile = { from: located.file, to };
+      movedAssets = moveAssets(located.file, to);
+      if (row.section !== null) forgetEmptySection(wiki, row.section);
+    })();
+  } catch (error) {
+    const assets = movedAssets as { from: string; to: string } | null;
+    const file = movedFile as { from: string; to: string } | null;
+    if (assets) fs.renameSync(assets.to, assets.from);
+    if (file) fs.renameSync(file.to, file.from);
+    return failure(error);
+  }
+  return getNote(wiki, nextSlug);
 }
 
 /**

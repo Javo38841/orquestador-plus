@@ -2,6 +2,7 @@ import {
   afterNextRender,
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -12,7 +13,7 @@ import {
   untracked,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { TranslocoPipe } from '@jsverse/transloco';
+import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import {
   sectionChain,
   type NoteSummary,
@@ -24,6 +25,13 @@ import {
 type Row =
   | { key: string; kind: 'page'; depth: number; parent: string | null; page: NoteSummary }
   | { key: string; kind: 'section'; depth: number; parent: string | null; section: WikiSection };
+
+/** `dropTarget` value of the root zone; no section path can look like this. */
+const ROOT_DROP = '/root';
+/** Time over a folded section before it unfolds while dragging. */
+export const EXPAND_ON_DRAG_MS = 600;
+/** Type of the drag payload, so only pages of the tree are accepted. */
+const DRAG_TYPE = 'application/x-orquestador-page';
 
 const pageKey = (slug: string): string => `p:${slug}`;
 const sectionKey = (name: string): string => `s:${name}`;
@@ -49,6 +57,21 @@ type Adding = { section: string; kind: 'page' | 'section' };
   imports: [NgTemplateOutlet, TranslocoPipe],
   host: { '(keydown)': 'onKeydown($event)', '(focusin)': 'onFocusin($event)' },
   template: `
+    @if (dragging()) {
+      <div
+        class="mb-2 rounded-md border border-dashed px-2 py-1.5 text-xs text-muted"
+        [class.border-accent]="dropTarget() === ROOT"
+        [class.bg-surface]="dropTarget() === ROOT"
+        [class.border-line]="dropTarget() !== ROOT"
+        data-testid="wiki-root-drop"
+        [attr.data-drop-over]="dropTarget() === ROOT ? 'true' : null"
+        (dragover)="onDragOver($event, ROOT)"
+        (dragleave)="onDragLeave(ROOT)"
+        (drop)="onDrop($event, null)"
+      >
+        {{ 'wiki.move.dropRoot' | transloco }}
+      </div>
+    }
     <ul role="tree" [attr.aria-label]="'wiki.sidebar' | transloco" class="space-y-0.5 text-sm">
       @for (page of tree().pages; track page.slug) {
         <ng-container *ngTemplateOutlet="pageTpl; context: { $implicit: page, depth: 0 }" />
@@ -59,21 +82,73 @@ type Adding = { section: string; kind: 'page' | 'section' };
     </ul>
 
     <ng-template #pageTpl let-page let-depth="depth">
-      <li role="none">
-        <button
-          type="button"
-          role="treeitem"
-          [class]="itemClass(page.slug === currentSlug())"
-          [attr.data-key]="pageKey(page.slug)"
-          [attr.aria-level]="depth + 1"
-          [attr.aria-current]="page.slug === currentSlug() ? 'page' : null"
-          [attr.aria-selected]="page.slug === currentSlug()"
-          [attr.tabindex]="tabKey() === pageKey(page.slug) ? 0 : -1"
-          data-testid="note-item"
-          (click)="opened.emit(page.slug)"
-        >
-          {{ page.title }}
-        </button>
+      <li role="none" class="group">
+        <div class="flex items-center gap-1">
+          <button
+            type="button"
+            role="treeitem"
+            draggable="true"
+            [class]="itemClass(page.slug === currentSlug())"
+            [class.opacity-50]="dragging() === page.slug"
+            [attr.data-key]="pageKey(page.slug)"
+            [attr.aria-level]="depth + 1"
+            [attr.aria-current]="page.slug === currentSlug() ? 'page' : null"
+            [attr.aria-selected]="page.slug === currentSlug()"
+            [attr.tabindex]="tabKey() === pageKey(page.slug) ? 0 : -1"
+            data-testid="note-item"
+            (click)="opened.emit(page.slug)"
+            (dragstart)="onDragStart($event, page.slug)"
+            (dragend)="endDrag()"
+          >
+            {{ page.title }}
+          </button>
+          <button
+            type="button"
+            class="rounded-md px-1.5 py-1 text-xs text-muted opacity-0 outline-none hover:bg-surface hover:text-ink focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent group-focus-within:opacity-100 group-hover:opacity-100"
+            [attr.aria-label]="'wiki.move.button' | transloco: { page: page.title }"
+            [attr.title]="'wiki.move.title' | transloco"
+            data-testid="note-move"
+            (click)="startMoving(page.slug)"
+          >
+            ⇄
+          </button>
+        </div>
+        @if (moving() === page.slug) {
+          <form
+            class="mt-1 space-y-1 pl-3"
+            data-testid="move-form"
+            (submit)="$event.preventDefault(); confirmMove(target.value)"
+            (keydown.escape)="$event.preventDefault(); $event.stopPropagation(); cancelMoving()"
+          >
+            <select
+              #target
+              class="w-full rounded-md border border-line bg-canvas px-2 py-1 text-ink outline-none focus:border-accent"
+              [attr.aria-label]="'wiki.move.target' | transloco: { page: page.title }"
+              data-testid="move-target"
+            >
+              @for (option of moveOptions(page.slug); track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }
+            </select>
+            <div class="flex gap-2">
+              <button
+                type="submit"
+                class="rounded-md bg-accent px-2 py-1 text-xs font-semibold text-accent-ink outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                data-testid="move-confirm"
+              >
+                {{ 'wiki.move.confirm' | transloco }}
+              </button>
+              <button
+                type="button"
+                class="rounded-md border border-line px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                data-testid="move-cancel"
+                (click)="cancelMoving()"
+              >
+                {{ 'wiki.move.cancel' | transloco }}
+              </button>
+            </div>
+          </form>
+        }
       </li>
     </ng-template>
 
@@ -85,7 +160,17 @@ type Adding = { section: string; kind: 'page' | 'section' };
           data-testid="wiki-section"
           [attr.data-depth]="depth"
         >
-          <div class="flex items-center gap-1">
+          <div
+            class="flex items-center gap-1 rounded-md"
+            [class.ring-2]="dropTarget() === section.name"
+            [class.ring-accent]="dropTarget() === section.name"
+            [class.bg-surface]="dropTarget() === section.name"
+            [attr.data-drop-over]="dropTarget() === section.name ? 'true' : null"
+            data-testid="wiki-section-row"
+            (dragover)="onDragOver($event, section.name)"
+            (dragleave)="onDragLeave(section.name)"
+            (drop)="onDrop($event, section.name)"
+          >
             <button
               type="button"
               role="treeitem"
@@ -186,6 +271,8 @@ export class WikiTreeComponent {
   /** Slug of the open page, highlighted. */
   readonly currentSlug = input<string | null>(null);
   readonly opened = output<string>();
+  /** A page was dropped on a section, or confirmed in "Mover a…"; `section` is null for the root. */
+  readonly moved = output<{ slug: string; section: string | null }>();
   /** Called by the "+" of a section; without it the "+" does nothing. */
   readonly createPage = input<PageCreator | null>(null);
   /** Called by the "new section inside" button of a section; without it that button does nothing. */
@@ -193,10 +280,19 @@ export class WikiTreeComponent {
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
+  private readonly transloco = inject(TranslocoService);
   /** The section whose inline form is open, and what it creates. */
   protected readonly adding = signal<Adding | null>(null);
   protected readonly pageError = signal<string | null>(null);
   private readonly collapsed = signal<ReadonlySet<string>>(new Set());
+  /** Slug of the page being dragged. */
+  protected readonly dragging = signal<string | null>(null);
+  /** Section (or `ROOT`) under the pointer while dragging. */
+  protected readonly dropTarget = signal<string | null>(null);
+  /** Slug of the page whose "Mover a…" form is open. */
+  protected readonly moving = signal<string | null>(null);
+  private expandTimer: ReturnType<typeof setTimeout> | null = null;
+  protected readonly ROOT = ROOT_DROP;
   /** The row that last had focus: the one reachable with Tab. */
   private readonly focused = signal<string | null>(null);
 
@@ -256,6 +352,9 @@ export class WikiTreeComponent {
   });
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => {
+      if (this.expandTimer !== null) clearTimeout(this.expandTimer);
+    });
     // Landing on a page (a link, the search, Anterior / Siguiente) shows it: the folders above it unfold.
     effect(() => {
       const section = this.currentSection();
@@ -315,6 +414,89 @@ export class WikiTreeComponent {
     }
     this.cancelAdding();
     this.setCollapsed(form.section, false);
+  }
+
+  protected onDragStart(event: DragEvent, slug: string): void {
+    event.dataTransfer?.setData(DRAG_TYPE, slug);
+    event.dataTransfer?.setData('text/plain', slug);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    this.dragging.set(slug);
+  }
+
+  protected endDrag(): void {
+    this.dragging.set(null);
+    this.setDropTarget(null);
+  }
+
+  protected onDragOver(event: DragEvent, target: string): void {
+    if (this.dragging() === null) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    this.setDropTarget(target);
+  }
+
+  protected onDragLeave(target: string): void {
+    if (this.dropTarget() === target) this.setDropTarget(null);
+  }
+
+  protected onDrop(event: DragEvent, section: string | null): void {
+    const slug = this.dragging();
+    if (slug === null) return;
+    event.preventDefault();
+    this.endDrag();
+    this.moved.emit({ slug, section });
+  }
+
+  /** Highlights the section under the pointer; a folded one unfolds if the pointer stays on it. */
+  private setDropTarget(target: string | null): void {
+    if (this.dropTarget() === target) return;
+    this.dropTarget.set(target);
+    if (this.expandTimer !== null) clearTimeout(this.expandTimer);
+    this.expandTimer = null;
+    if (target === null || target === ROOT_DROP || !this.collapsed().has(target)) return;
+    this.expandTimer = setTimeout(() => {
+      this.expandTimer = null;
+      this.setCollapsed(target, false);
+    }, EXPAND_ON_DRAG_MS);
+  }
+
+  protected startMoving(slug: string): void {
+    this.moving.set(slug);
+    afterNextRender(
+      () =>
+        this.host.nativeElement.querySelector<HTMLElement>('[data-testid="move-target"]')?.focus(),
+      { injector: this.injector },
+    );
+  }
+
+  protected cancelMoving(): void {
+    const slug = this.moving();
+    this.moving.set(null);
+    if (slug) this.focus(pageKey(slug));
+  }
+
+  protected confirmMove(value: string): void {
+    const slug = this.moving();
+    if (!slug) return;
+    this.moving.set(null);
+    this.moved.emit({ slug, section: value === '' ? null : value });
+    this.focus(pageKey(slug));
+  }
+
+  /** Destinations for "Mover a…": the root, then every section with its path of titles. */
+  protected moveOptions(slug: string): { value: string; label: string }[] {
+    const here = this.sectionOfPage().get(slug) ?? '';
+    const options: { value: string; label: string }[] = [];
+    const visit = (sections: WikiSection[], trail: string[]): void => {
+      for (const s of sections) {
+        const path = [...trail, s.title];
+        options.push({ value: s.name, label: path.join(' / ') });
+        visit(s.sections, path);
+      }
+    };
+    options.push({ value: '', label: this.transloco.translate('wiki.move.root') });
+    visit(this.tree().sections, []);
+    return options.filter((o) => o.value !== here);
   }
 
   protected toggle(name: string): void {
@@ -379,6 +561,11 @@ export class WikiTreeComponent {
         case 'ArrowLeft':
           if (row.kind === 'section' && !this.collapsed().has(name)) this.setCollapsed(name, true);
           else if (row.parent) this.focus(row.parent);
+          return true;
+        case 'm':
+        case 'M':
+          if (row.kind !== 'page') return false;
+          this.startMoving(name);
           return true;
         case 'Enter':
           if (row.kind === 'section') this.toggle(name);
