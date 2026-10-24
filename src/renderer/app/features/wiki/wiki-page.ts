@@ -22,12 +22,13 @@ import { SearchLauncher } from '../search/search-launcher';
 import { NoteBody } from './note-body';
 import { WikiMode } from './wiki-mode';
 import { WikiStore } from './wiki.store';
-import { WikiTreeComponent, type PageCreator } from './wiki-tree';
+import { WikiTreeComponent, type PageCreator, type SectionCreator } from './wiki-tree';
 
 export const SECTION_ERROR_KEYS: Record<SectionError, string> = {
   empty: 'wiki.sectionErrors.empty',
   invalid: 'wiki.sectionErrors.invalid',
   duplicate: 'wiki.sectionErrors.duplicate',
+  too_deep: 'wiki.sectionErrors.tooDeep',
   io: 'wiki.sectionErrors.io',
 };
 
@@ -53,6 +54,7 @@ export const SKIPPED_REASON_KEYS: Record<SkippedReason, string> = {
   duplicate: 'wiki.skipped.reasons.duplicate',
   unreadable: 'wiki.skipped.reasons.unreadable',
   invalid_name: 'wiki.skipped.reasons.invalid_name',
+  too_deep: 'wiki.skipped.reasons.too_deep',
 };
 
 interface Draft {
@@ -251,6 +253,7 @@ interface Draft {
             [tree]="store.tree()"
             [currentSlug]="editing() ? null : (store.current()?.slug ?? null)"
             [createPage]="createPage"
+            [createSection]="createSubsection"
             (opened)="guard(openNote, $event)"
           />
         }
@@ -401,8 +404,8 @@ interface Draft {
                   [attr.aria-label]="'wiki.breadcrumbs' | transloco"
                   data-testid="breadcrumbs"
                 >
-                  @if (store.currentSectionTitle(); as section) {
-                    <span data-testid="breadcrumb-section">{{ section }}</span>
+                  @for (folder of store.currentTrail(); track $index) {
+                    <span data-testid="breadcrumb-section">{{ folder }}</span>
                     <span aria-hidden="true">/</span>
                   }
                   <span data-testid="breadcrumb-page">{{ note.title }}</span>
@@ -674,6 +677,16 @@ export class WikiPage implements OnInit {
     }
     this.creatingSection.set(false);
   }
+
+  /** Button of a section to add a section inside it. */
+  protected readonly createSubsection: SectionCreator = async (parent, name) => {
+    try {
+      const failure = await this.store.createSection(name, parent);
+      return failure ? SECTION_ERROR_KEYS[failure] : null;
+    } catch {
+      return SECTION_ERROR_KEYS.io;
+    }
+  };
 
   /** "+" of a section: creates an empty page there and opens it (asking first if unsaved). */
   protected readonly createPage: PageCreator = async (section, title) => {

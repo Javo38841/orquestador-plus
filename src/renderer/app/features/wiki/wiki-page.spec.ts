@@ -1013,3 +1013,139 @@ describe('WikiPage attachments', () => {
     expect(r.api.deleteNote).toHaveBeenCalledWith('A');
   });
 });
+
+describe('WikiPage with nested folders (#89)', () => {
+  const at = (slug: string, title: string, section?: string): NoteSummary => ({
+    ...summary(slug),
+    title,
+    ...(section !== undefined && { section }),
+  });
+  const notes = [
+    at('P/Q/adr', 'ADR-001', 'P/Q'),
+    at('P/Q/adr2', 'ADR-002', 'P/Q'),
+    at('P/leeme', 'Léeme', 'P'),
+    at('Z/fin', 'Fin', 'Z'),
+  ];
+  const sections: SectionSummary[] = [
+    { name: 'P', title: 'Proyectos' },
+    { name: 'P/Q', title: 'OrquestadorPlus' },
+    { name: 'Z', title: 'Zeta' },
+  ];
+  const full = (n: NoteSummary): Note => ({
+    ...n,
+    hash: `h-${n.slug}`,
+    content: 'x',
+    links: [],
+    backlinks: [],
+  });
+  const fixtures: Fixtures = {
+    notes,
+    sections,
+    notesByContent: Object.fromEntries(notes.map((n) => [n.slug, full(n)])),
+  };
+
+  it('CP-08-80: the breadcrumbs show the title of every folder and then the page', async () => {
+    const { el, click } = await render(undefined, fixtures);
+    const row = Array.from(el.querySelectorAll('[data-testid="note-item"]')).findIndex(
+      (r) => r.textContent?.trim() === 'ADR-001',
+    );
+
+    await click('note-item', row);
+
+    const texts = (id: string) =>
+      Array.from(el.querySelectorAll(`[data-testid="${id}"]`)).map((e) => e.textContent?.trim());
+    expect(texts('breadcrumb-section')).toEqual(['Proyectos', 'OrquestadorPlus']);
+    expect(texts('breadcrumb-page')).toEqual(['ADR-001']);
+  });
+
+  it('CP-08-84: Anterior / Siguiente follow the tree order, folder by folder, depth first', async () => {
+    const { el, click, api } = await render(undefined, fixtures);
+    const open = async (title: string) => {
+      const items = Array.from(el.querySelectorAll('[data-testid="note-item"]'));
+      await click(
+        'note-item',
+        items.findIndex((r) => r.textContent?.trim() === title),
+      );
+    };
+
+    await open('Léeme'); // pages of P first, then its folder Q
+    const footer = () => el.querySelector('[data-testid="page-footer"]')?.textContent;
+    expect(footer()).toContain('ADR-001');
+    await click('page-next');
+    expect(el.querySelector('[data-testid="note-view-title"]')?.textContent?.trim()).toBe(
+      'ADR-001',
+    );
+    await click('page-next');
+    await click('page-next');
+    expect(el.querySelector('[data-testid="note-view-title"]')?.textContent?.trim()).toBe('Fin');
+    expect(api.getNote).toHaveBeenLastCalledWith('Z/fin');
+    expect(el.querySelector('[data-testid="page-next"]')).toBeNull();
+    await click('page-prev');
+    expect(el.querySelector('[data-testid="note-view-title"]')?.textContent?.trim()).toBe(
+      'ADR-002',
+    );
+  });
+
+  it('CP-08-81: the "new section inside" button of a section calls createSection with its path', async () => {
+    const { api, el, click, type } = await render(undefined, fixtures);
+    api.createSection.mockResolvedValue({
+      ok: true,
+      section: { name: 'P/Q/Nueva', title: 'Nueva' },
+    });
+
+    await click('wiki-add-subsection', 1); // OrquestadorPlus
+    await type('new-subsection-name', 'Nueva');
+    (el.querySelector('[data-testid="new-subsection-form"]') as HTMLFormElement).requestSubmit();
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(api.createSection).toHaveBeenCalledWith({ title: 'Nueva', parent: 'P/Q' });
+  });
+
+  it('CP-08-82: the "+" of a nested section creates the page in that folder and opens it', async () => {
+    const created = full(at('P/Q/Nueva', 'Nueva', 'P/Q'));
+    const { api, el, click, type, settle } = await render({ ok: true, note: created }, fixtures);
+
+    await click('wiki-add-page', 1);
+    await type('new-page-title', 'Nueva');
+    (el.querySelector('[data-testid="new-page-form"]') as HTMLFormElement).requestSubmit();
+    await new Promise((resolve) => setTimeout(resolve));
+    await settle();
+
+    expect(api.createNote).toHaveBeenCalledWith({
+      title: 'Nueva',
+      content: '',
+      section: 'P/Q',
+    });
+    expect(el.querySelector('[data-testid="note-view-title"]')?.textContent?.trim()).toBe('Nueva');
+  });
+
+  it('CP-08-83: a repeated section name in the same folder shows a Spanish error and creates nothing', async () => {
+    const { api, el, click, type, settle } = await render(undefined, {
+      ...fixtures,
+      sections: [...sections, { name: 'P/Q/Hija', title: 'Hija' }],
+    });
+    await click('wiki-add-subsection', 1);
+    await type('new-subsection-name', 'hija');
+    (el.querySelector('[data-testid="new-subsection-form"]') as HTMLFormElement).requestSubmit();
+    await new Promise((resolve) => setTimeout(resolve));
+    await settle();
+
+    expect(api.createSection).not.toHaveBeenCalled();
+    expect(el.querySelector('[data-testid="new-page-error"]')?.textContent?.trim()).toBe(
+      'Ya existe una sección con ese nombre',
+    );
+  });
+
+  it('CP-08-87: folders deeper than the limit are announced in Spanish with their path', async () => {
+    const { el, click } = await render(undefined, {
+      ...fixtures,
+      skipped: [{ file: 'a/b/c/d/e/f', reason: 'too_deep' }],
+    });
+
+    await click('skipped-toggle');
+
+    const item = el.querySelector('[data-testid="skipped-item"]')!.textContent!;
+    expect(item).toContain('a/b/c/d/e/f');
+    expect(item).toContain('Carpeta demasiado profunda');
+  });
+});

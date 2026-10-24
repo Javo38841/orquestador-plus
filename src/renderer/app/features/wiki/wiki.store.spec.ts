@@ -164,4 +164,68 @@ describe('WikiStore', () => {
       section: 'Guías',
     });
   });
+
+  describe('nested folders (#89)', () => {
+    const at = (slug: string, title: string, section?: string) => ({
+      ...note(slug),
+      title,
+      ...(section !== undefined && { section }),
+    });
+
+    it('CP-08-80: the trail has the title of each folder above the open note', async () => {
+      const { store, api } = setup({ ok: true, note: at('P/Q/adr', 'ADR-001', 'P/Q') });
+      api.listNotes.mockResolvedValue([at('P/Q/adr', 'ADR-001', 'P/Q')]);
+      api.listSections.mockResolvedValue([
+        { name: 'P', title: 'Proyectos' },
+        { name: 'P/Q', title: 'OrquestadorPlus' },
+      ]);
+      await store.load();
+      expect(store.currentTrail()).toEqual([]);
+
+      await store.openNote('P/Q/adr');
+
+      expect(store.currentTrail()).toEqual(['Proyectos', 'OrquestadorPlus']);
+    });
+
+    it('CP-08-85: links resolve by title to the closest note, or by path to the exact one', async () => {
+      const { store, api } = setup();
+      api.listNotes.mockResolvedValue([
+        at('A/Dup', 'Dup', 'A'),
+        at('B/x/Dup', 'Dup', 'B/x'),
+        at('Dup', 'Dup'),
+      ]);
+      await store.load();
+
+      expect(store.slugByKey().get('dup')).toBe('Dup');
+      expect(store.slugByKey().get('a/dup')).toBe('A/Dup');
+      expect(store.slugByKey().get('b/x/dup')).toBe('B/x/Dup');
+    });
+
+    it('CP-08-81: creates a section inside a parent and reloads', async () => {
+      const { store, api } = setup();
+      expect(await store.createSection(' Hija ', 'Padre/Hijo')).toBeNull();
+      expect(api.createSection).toHaveBeenCalledWith({ title: 'Hija', parent: 'Padre/Hijo' });
+      expect(api.listSections).toHaveBeenCalled();
+    });
+
+    it('CP-08-83: rejects empty, unsafe, repeated-in-that-folder and too deep names before main', async () => {
+      const { store, api } = setup();
+      api.listSections.mockResolvedValue([
+        { name: 'P', title: 'P' },
+        { name: 'P/Sub', title: 'Sub' },
+      ]);
+      await store.load();
+
+      expect(await store.createSection('', 'P')).toBe('empty');
+      expect(await store.createSection('a/b', 'P')).toBe('invalid');
+      expect(await store.createSection('..', 'P')).toBe('invalid');
+      expect(await store.createSection('sub', 'P')).toBe('duplicate');
+      expect(await store.createSection('x', 'a/b/c/d/e')).toBe('too_deep');
+      expect(await store.createSection('x', '../y')).toBe('invalid');
+      expect(api.createSection).not.toHaveBeenCalled();
+      // the same name in another folder is fine
+      expect(await store.createSection('Sub', 'Otra')).toBeNull();
+      expect(api.createSection).toHaveBeenCalledTimes(1);
+    });
+  });
 });

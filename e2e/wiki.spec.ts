@@ -111,6 +111,47 @@ test('CP-08-72: a section and a page created from the sidebar survive a restart'
   await expect(reopened.getByTestId('note-item')).toHaveText('Instalación');
 });
 
+test('CP-08-90: nested sections and a page show as an indented tree, with breadcrumbs, and survive a restart', async () => {
+  const { page, app, dataDir } = launched;
+  await page.getByTestId('new-section').click();
+  await page.getByTestId('new-section-name').fill('Proyectos');
+  await page.getByTestId('new-section-save').click();
+  const outer = page.getByTestId('wiki-section').filter({ hasText: 'Proyectos' });
+  await expect(outer.getByTestId('wiki-section-toggle').first()).toContainText('Proyectos');
+
+  await outer.getByTestId('wiki-add-subsection').first().click();
+  await outer.getByTestId('new-subsection-name').fill('OrquestadorPlus');
+  await outer.getByTestId('new-subsection-name').press('Enter');
+  const inner = outer.getByTestId('wiki-section').filter({ hasText: 'OrquestadorPlus' });
+  await expect(inner.getByTestId('wiki-section-toggle').first()).toContainText('OrquestadorPlus');
+
+  await inner.getByTestId('wiki-add-page').first().click();
+  await inner.getByTestId('new-page-title').fill('ADR-001');
+  await inner.getByTestId('new-page-title').press('Enter');
+  await expect(page.getByTestId('note-view-title')).toHaveText('ADR-001');
+  await expect(page.getByTestId('breadcrumbs')).toHaveText(
+    /Proyectos\s*\/\s*OrquestadorPlus\s*\/\s*ADR-001/,
+  );
+
+  const outerBox = (await outer.getByTestId('wiki-section-toggle').first().boundingBox())!;
+  const innerBox = (await inner.getByTestId('wiki-section-toggle').first().boundingBox())!;
+  const pageBox = (await inner.getByTestId('note-item').boundingBox())!;
+  expect(innerBox.x).toBeGreaterThan(outerBox.x);
+  expect(pageBox.x).toBeGreaterThan(innerBox.x);
+
+  await app.close();
+  launched = await launchApp(dataDir);
+  await launched.page.getByRole('link', { name: 'Wiki' }).click();
+  const reopened = launched.page.getByTestId('wiki-section').filter({ hasText: 'Proyectos' });
+  await expect(reopened.getByTestId('wiki-section-toggle').first()).toContainText('Proyectos');
+  const reopenedInner = reopened.getByTestId('wiki-section').filter({ hasText: 'OrquestadorPlus' });
+  await expect(reopenedInner.getByTestId('note-item')).toHaveText('ADR-001');
+  await reopenedInner.getByTestId('note-item').click();
+  await expect(launched.page.getByTestId('breadcrumbs')).toHaveText(
+    /Proyectos\s*\/\s*OrquestadorPlus\s*\/\s*ADR-001/,
+  );
+});
+
 test('CP-08-101: editing a note from the UI keeps the tags and source of its frontmatter', async () => {
   const { page, dataDir } = launched;
   await createNote(page, 'Con tags', 'uno');

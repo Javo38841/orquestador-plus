@@ -337,12 +337,14 @@
     "sectionName": "Nombre de la sección",
     "create": "Crear",
     "addPage": "Nueva página en {{section}}",
+    "addSubsection": "Nueva sección dentro de {{section}}",
     "pageTitle": "Título de la página",
     "containsCurrent": "Contiene la página abierta",
     "sectionErrors": {
       "empty": "El nombre de la sección no puede estar vacío",
       "invalid": "El nombre no puede tener / \\ : * ? \" < > | ni .. ni empezar con . o _",
       "duplicate": "Ya existe una sección con ese nombre",
+      "tooDeep": "Las secciones admiten como máximo 5 niveles de carpetas",
       "io": "No se pudo crear la carpeta de la sección"
     },
     "attach": {
@@ -391,7 +393,8 @@
       "reasons": {
         "duplicate": "Título o nombre duplicado",
         "unreadable": "No se pudo leer",
-        "invalid_name": "Nombre de archivo no válido"
+        "invalid_name": "Nombre de archivo no válido",
+        "too_deep": "Carpeta demasiado profunda (máximo 5 niveles): no se carga"
       }
     }
   },

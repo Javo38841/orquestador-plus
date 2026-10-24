@@ -243,4 +243,155 @@ describe('WikiTreeComponent', () => {
       expect(el.querySelector('[data-testid="new-page-form"]')).toBeNull();
     });
   });
+
+  describe('nested folders (#89)', () => {
+    const deep = [
+      page('r'),
+      page('adr', 'Proyectos/Orq/Decisiones'),
+      page('otra', 'Proyectos/Orq'),
+      page('x', 'Proyectos'),
+    ];
+    const toggles = (el: HTMLElement) =>
+      Array.from(el.querySelectorAll<HTMLElement>('[data-testid="wiki-section-toggle"]'));
+    const rowOf = (el: HTMLElement, label: string) =>
+      Array.from(el.querySelectorAll<HTMLElement>('[data-testid="note-item"]')).find(
+        (r) => r.textContent?.trim() === label,
+      )!;
+    /** Number of folders (`role="group"`) a row sits in. */
+    const levelOf = (row: HTMLElement) => {
+      let n = 0;
+      for (let e = row.parentElement; e; e = e.parentElement)
+        if (e.getAttribute('role') === 'group') n++;
+      return n;
+    };
+
+    it('CP-08-78: shows every level, each one indented one step more than the last', async () => {
+      const { el } = await render(deep);
+
+      expect(toggles(el).map((t) => t.textContent!.replace(/[▸▾]/, '').trim())).toEqual([
+        'Proyectos',
+        'Orq',
+        'Decisiones',
+      ]);
+      expect(toggles(el).map((t) => t.getAttribute('aria-level'))).toEqual(['1', '2', '3']);
+      expect(['R', 'X', 'OTRA', 'ADR'].map((l) => levelOf(rowOf(el, l)))).toEqual([0, 1, 2, 3]);
+      const groups = el.querySelectorAll('[role="group"]');
+      expect(groups).toHaveLength(3);
+      for (const g of groups) expect(g.className).toContain('pl-3');
+    });
+
+    it('CP-08-78: each folder folds and unfolds on its own, hiding what is inside it', async () => {
+      const { el, settle } = await render(deep);
+
+      toggles(el)[1].click(); // Orq
+      await settle();
+      expect(toggles(el)[1].getAttribute('aria-expanded')).toBe('false');
+      expect(rowOf(el, 'X')).toBeDefined();
+      expect(rowOf(el, 'OTRA')).toBeUndefined();
+      expect(rowOf(el, 'ADR')).toBeUndefined();
+      expect(toggles(el)).toHaveLength(2); // Decisiones is inside Orq
+
+      toggles(el)[1].click();
+      await settle();
+      expect(rowOf(el, 'ADR')).toBeDefined();
+    });
+
+    it('CP-08-79: a folded ancestor of the open page says so, at any level, and the selection is kept', async () => {
+      const { el, settle } = await render(deep, 'adr');
+      expect(rowOf(el, 'ADR').getAttribute('aria-current')).toBe('page');
+
+      toggles(el)[0].click(); // Proyectos folds everything
+      await settle();
+      expect(toggles(el)).toHaveLength(1);
+      expect(toggles(el)[0].dataset['containsCurrent']).toBe('true');
+
+      toggles(el)[0].click();
+      await settle();
+      expect(toggles(el).map((t) => t.dataset['containsCurrent'])).toEqual([
+        undefined,
+        undefined,
+        undefined,
+      ]);
+      expect(rowOf(el, 'ADR').getAttribute('aria-current')).toBe('page');
+    });
+
+    it('CP-08-79: opening a page inside folded folders unfolds the ones above it', async () => {
+      const { el, fixture, settle } = await render(deep, 'r');
+      toggles(el)[0].click();
+      await settle();
+      expect(rowOf(el, 'ADR')).toBeUndefined();
+
+      fixture.componentRef.setInput('currentSlug', 'adr');
+      await settle();
+
+      expect(rowOf(el, 'ADR').getAttribute('aria-current')).toBe('page');
+      expect(toggles(el).every((t) => t.getAttribute('aria-expanded') === 'true')).toBe(true);
+    });
+
+    it('CP-08-78: arrows walk nested rows; ← goes to the parent folder, → into the first child', async () => {
+      const { el, press } = await render(deep);
+      toggles(el)[2].focus(); // Decisiones
+      await press('ArrowRight');
+      expect(document.activeElement?.textContent?.trim()).toBe('ADR');
+      await press('ArrowLeft');
+      expect(document.activeElement?.textContent).toContain('Decisiones');
+      await press('ArrowLeft'); // folds it
+      expect(toggles(el)[2].getAttribute('aria-expanded')).toBe('false');
+      await press('ArrowLeft'); // to Orq
+      expect(document.activeElement?.textContent).toContain('Orq');
+    });
+
+    it('CP-08-81: the button of a section at any level creates a section inside it', async () => {
+      const { el, fixture, settle } = await render(deep);
+      const create = vi.fn(async () => null);
+      fixture.componentRef.setInput('createSection', create);
+      await settle();
+
+      el.querySelectorAll<HTMLElement>('[data-testid="wiki-add-subsection"]')[1].click(); // Orq
+      await settle();
+      const field = el.querySelector<HTMLInputElement>('[data-testid="new-subsection-name"]')!;
+      expect(document.activeElement).toBe(field);
+      field.value = 'Nueva';
+      field.dispatchEvent(new Event('input'));
+      el.querySelector<HTMLFormElement>('[data-testid="new-subsection-form"]')!.requestSubmit();
+      await new Promise((resolve) => setTimeout(resolve));
+      await settle();
+
+      expect(create).toHaveBeenCalledWith('Proyectos/Orq', 'Nueva');
+      expect(el.querySelector('[data-testid="new-subsection-form"]')).toBeNull();
+    });
+
+    it('CP-08-82: the "+" of a nested section asks to create the page in that folder', async () => {
+      const { el, fixture, settle } = await render(deep);
+      const create = vi.fn(async () => null);
+      fixture.componentRef.setInput('createPage', create);
+      await settle();
+
+      el.querySelectorAll<HTMLElement>('[data-testid="wiki-add-page"]')[2].click(); // Decisiones
+      await settle();
+      const field = el.querySelector<HTMLInputElement>('[data-testid="new-page-title"]')!;
+      field.value = 'ADR-002';
+      field.dispatchEvent(new Event('input'));
+      el.querySelector<HTMLFormElement>('[data-testid="new-page-form"]')!.requestSubmit();
+      await new Promise((resolve) => setTimeout(resolve));
+      await settle();
+
+      expect(create).toHaveBeenCalledWith('Proyectos/Orq/Decisiones', 'ADR-002');
+    });
+
+    it('CP-08-83: the section form shows the error it gets back', async () => {
+      const { el, fixture, settle } = await render(deep);
+      fixture.componentRef.setInput('createSection', async () => 'wiki.sectionErrors.duplicate');
+      await settle();
+      el.querySelector<HTMLElement>('[data-testid="wiki-add-subsection"]')!.click();
+      await settle();
+      el.querySelector<HTMLFormElement>('[data-testid="new-subsection-form"]')!.requestSubmit();
+      await new Promise((resolve) => setTimeout(resolve));
+      await settle();
+
+      expect(el.querySelector('[data-testid="new-page-error"]')?.textContent?.trim()).toBe(
+        'Ya existe una sección con ese nombre',
+      );
+    });
+  });
 });
