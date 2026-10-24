@@ -35,7 +35,7 @@ test('CP-02-02: a project created from the task form shows as the chip', async (
   await expect(row.getByTestId('task-project-chip')).toHaveText('api-gateway');
 });
 
-test('CP-02-04: completing a task removes it from pending and un-completing brings it back', async () => {
+test('CP-02-04: completing a task keeps it struck in pending and un-completing brings it back', async () => {
   const { page } = launched;
   await page.getByTestId('new-task').click();
   await page.getByTestId('task-title').fill('Pagar la luz');
@@ -44,15 +44,40 @@ test('CP-02-04: completing a task removes it from pending and un-completing brin
   await expect(row).toBeVisible();
 
   await row.getByTestId('task-check').check();
+  await expect(row).toHaveAttribute('data-done', 'true');
+
+  await row.getByTestId('task-check').uncheck();
+  await expect(row).not.toHaveAttribute('data-done', 'true');
+  await expect(row).toBeVisible();
+});
+
+test('CP-05-39: a completed task removed from the list with the keyboard stays off Tareas and Hoy after a restart', async () => {
+  const { page, app, dataDir } = launched;
+  await page.getByTestId('new-task').click();
+  await page.getByTestId('task-title').fill('Limpiar logs');
+  await page.getByTestId('task-save').click();
+  const row = page.getByTestId('task-row').filter({ hasText: 'Limpiar logs' });
+  await row.getByTestId('task-today').click();
+  await row.getByTestId('task-check').check();
+  await expect(row).toHaveAttribute('data-done', 'true');
+
+  await row.getByTestId('task-hide').focus();
+  await page.keyboard.press('Enter');
   await expect(row).toHaveCount(0);
 
-  await page.getByTestId('show-completed').check();
-  const done = page.getByTestId('task-row').filter({ hasText: 'Pagar la luz' });
-  await expect(done).toBeVisible();
-  await done.getByTestId('task-check').uncheck();
+  await app.close();
+  launched = await launchApp(dataDir);
+  const reopened = launched.page;
+  await expect(reopened.getByTestId('task-row').filter({ hasText: 'Limpiar logs' })).toHaveCount(0);
+  await reopened.getByRole('link', { name: 'Hoy' }).click();
+  await expect(reopened.getByTestId('today-subtitle')).toBeVisible();
+  await expect(reopened.getByTestId('today-task').filter({ hasText: 'Limpiar logs' })).toHaveCount(
+    0,
+  );
 
-  await page.getByTestId('show-completed').uncheck();
-  await expect(page.getByTestId('task-row').filter({ hasText: 'Pagar la luz' })).toBeVisible();
+  await reopened.getByRole('link', { name: 'Tareas' }).click();
+  await reopened.getByTestId('show-completed').check();
+  await expect(reopened.getByTestId('task-row').filter({ hasText: 'Limpiar logs' })).toBeVisible();
 });
 
 test('CP-03-07: completing a task from Hoy lowers the count (it stays struck through, #93)', async () => {

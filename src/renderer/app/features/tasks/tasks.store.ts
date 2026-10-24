@@ -1,5 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import {
+  localDate,
   validateProjectName,
   validateTaskInput,
   type Project,
@@ -8,6 +9,7 @@ import {
   type TaskInput,
   type TaskStatus,
 } from '../../../../shared/tasks';
+import { isDoneToday } from '../../../../shared/today';
 import { isSeriesRule, type RecurrenceKind } from '../../../../shared/recurrence';
 import { DESKTOP_API } from '../../core/desktop-api';
 
@@ -24,7 +26,10 @@ export class TasksStore {
   readonly tags = this.tagList.asReadonly();
   /** Tag the list is filtered by, or null for all tasks. */
   readonly tagFilter = signal<string | null>(null);
-  /** Pending view by default; completed tasks come back when this is on. */
+  /**
+   * Pending view by default, where tasks completed today stay struck through until taken off the
+   * list; every completed task comes back when this is on.
+   */
   readonly showCompleted = signal(false);
   /** Project the "Tareas" tab is filtered by: an id, 'loose' for no project, or null for all. */
   readonly projectFilter = signal<number | 'loose' | null>(null);
@@ -34,14 +39,20 @@ export class TasksStore {
     const tag = this.tagFilter();
     const project = this.projectFilter();
     const kind = this.kindFilter();
+    const today = localDate(new Date());
     return this.taskList().filter(
       (t) =>
-        (this.showCompleted() || t.status !== 'done') &&
+        (this.showCompleted() || t.status !== 'done' || isDoneToday(t, today)) &&
         (tag === null || t.tags.includes(tag)) &&
         (project === null ||
           (project === 'loose' ? t.projectId === null : t.projectId === project)) &&
         (kind === null || t.recurrence.kind === kind),
     );
+  });
+  /** Visible tasks completed today and not taken off the list: struck through, removable. */
+  readonly doneShown = computed(() => {
+    const today = localDate(new Date());
+    return this.visible().filter((t) => isDoneToday(t, today));
   });
   /** Unfinished tasks, for the "Tareas" tab counter. */
   readonly pendingCount = computed(() => this.taskList().filter((t) => t.status !== 'done').length);
@@ -160,7 +171,7 @@ export class TasksStore {
     }
   }
 
-  /** Takes completed tasks off Hoy; they stay in the database and in Tareas. */
+  /** Takes completed tasks off Hoy and Tareas (one shared "Quitar de la lista"); they are kept. */
   async hideFromToday(tasks: Task[]): Promise<void> {
     const ids = tasks.filter((t) => t.status === 'done').map((t) => t.id);
     if (!this.api || ids.length === 0) return;

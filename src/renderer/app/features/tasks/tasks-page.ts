@@ -279,10 +279,26 @@ const EMPTY_DRAFT: Draft = {
           />
           {{ 'tasks.showCompleted' | transloco }}
         </label>
-        <span class="ml-auto text-muted" data-testid="task-count">{{
-          'tasks.count.' + (store.visible().length === 1 ? 'one' : 'other')
-            | transloco: { count: store.visible().length }
-        }}</span>
+        @if (store.doneShown().length > 0) {
+          <button
+            type="button"
+            class="ml-auto rounded-md px-2 py-1 text-xs text-muted outline-none hover:bg-surface hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+            data-testid="tasks-clear-done"
+            [title]="'today.hideHint' | transloco"
+            (click)="store.hideFromToday(store.doneShown())"
+          >
+            {{ 'today.clearDone' | transloco: { count: store.doneShown().length } }}
+          </button>
+        }
+        <span
+          class="text-muted"
+          [class.ml-auto]="store.doneShown().length === 0"
+          data-testid="task-count"
+          >{{
+            'tasks.count.' + (store.visible().length === 1 ? 'one' : 'other')
+              | transloco: { count: store.visible().length }
+          }}</span
+        >
       </div>
 
       @if (store.visible().length === 0) {
@@ -317,6 +333,8 @@ const EMPTY_DRAFT: Draft = {
               [attr.data-task-id]="task.id"
               [attr.data-highlighted]="task.id === highlightedId() ? 'true' : null"
               [class.bg-surface-raised]="task.id === highlightedId()"
+              [class.opacity-60]="task.status === 'done'"
+              [attr.data-done]="task.status === 'done' ? 'true' : null"
             >
               <div class="min-w-0">
                 <label class="flex min-w-0 items-center gap-3">
@@ -402,6 +420,18 @@ const EMPTY_DRAFT: Draft = {
                     {{ 'tasks.confirmNo' | transloco }}
                   </button>
                 } @else {
+                  @if (isStruck(task)) {
+                    <button
+                      type="button"
+                      class="-my-0.5 shrink-0 rounded-md px-1.5 text-muted outline-none hover:bg-surface-raised hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+                      data-testid="task-hide"
+                      [attr.aria-label]="'today.hide' | transloco"
+                      [title]="'today.hideHint' | transloco"
+                      (click)="store.hideFromToday([task])"
+                    >
+                      ×
+                    </button>
+                  }
                   @if (task.status !== 'done') {
                     <button
                       type="button"
@@ -461,6 +491,10 @@ export class TasksPage implements OnInit {
       count: this.store.seriesCount(),
     },
   ]);
+  protected isStruck(task: Task): boolean {
+    return this.store.doneShown().some((t) => t.id === task.id);
+  }
+
   /** True when a combo narrows the list, to tell "no matches" from "nothing pending". */
   protected readonly filtering = computed(
     () =>

@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import type { OrquestadorApi } from '../../../../shared/ipc';
 import type { Task, TaskResult } from '../../../../shared/tasks';
 import { DESKTOP_API } from '../../core/desktop-api';
+import { todayGroups } from '../../../../shared/today';
 import { TasksStore } from './tasks.store';
 
 const task = (id: number, status: Task['status'] = 'todo', title = `t${id}`): Task => ({
@@ -38,7 +39,10 @@ function setup(stored: Task[]) {
     })),
     setTaskStatus: vi.fn(async (id, status): Promise<TaskResult> => ({
       ok: true,
-      task: task(id, status),
+      task: {
+        ...task(id, status),
+        completedAt: status === 'done' ? new Date().toISOString() : null,
+      },
     })),
     setTaskForToday: vi.fn(async (id, forToday): Promise<TaskResult> => ({
       ok: true,
@@ -50,6 +54,12 @@ function setup(stored: Task[]) {
   } as unknown as OrquestadorApi;
   TestBed.configureTestingModule({ providers: [{ provide: DESKTOP_API, useValue: api }] });
   return { store: TestBed.inject(TasksStore), api };
+}
+
+function api_reload(store: TasksStore, tasks: Task[]): void {
+  const api = TestBed.inject(DESKTOP_API) as unknown as { listTasks: () => Promise<Task[]> };
+  api.listTasks = async () => tasks;
+  void store;
 }
 
 describe('TasksStore', () => {
@@ -80,19 +90,91 @@ describe('TasksStore', () => {
     expect(store.visible().map((t) => t.id)).toEqual([1]);
   });
 
-  it('CP-02-04: completing a task removes it from the pending view and un-completing brings it back', async () => {
+  it('CP-02-04: completing a task keeps it struck in the pending view, lowers the count and un-completing brings it back', async () => {
     const { store } = setup([task(1), task(2)]);
     await store.load();
 
     await store.setDone(store.tasks()[0], true);
-    expect(store.visible().map((t) => t.id)).toEqual([2]);
-
-    store.showCompleted.set(true);
-    expect(store.visible()).toHaveLength(2);
-    store.showCompleted.set(false);
+    expect(store.visible().map((t) => t.id)).toEqual([1, 2]);
+    expect(store.pendingCount()).toBe(1);
 
     await store.setDone(store.tasks()[0], false);
-    expect(store.visible().map((t) => t.id)).toEqual([1, 2]);
+    expect(store.pendingCount()).toBe(2);
+    expect(store.doneShown()).toHaveLength(0);
+  });
+
+  describe('struck-through completed tasks (#100)', () => {
+    const doneAt = (id: number, completedAt: string, extra: Partial<Task> = {}): Task => ({
+      ...task(id, 'done'),
+      completedAt,
+      ...extra,
+    });
+    const now = () => new Date().toISOString();
+    const longAgo = '2026-01-05T10:00:00.000Z';
+
+    it('CP-05-31: only what was completed today (local) is shown in the pending view', async () => {
+      const { store } = setup([doneAt(1, longAgo), doneAt(2, now()), task(3)]);
+      await store.load();
+      expect(store.visible().map((t) => t.id)).toEqual([2, 3]);
+      expect(store.doneShown().map((t) => t.id)).toEqual([2]);
+    });
+
+    it('CP-05-34: "Mostrar completadas" shows every completed task, hidden ones too', async () => {
+      const at = now();
+      const { store } = setup([
+        doneAt(1, longAgo),
+        doneAt(2, at, { hiddenFromTodayAt: at }),
+        doneAt(3, at),
+      ]);
+      await store.load();
+      expect(store.visible().map((t) => t.id)).toEqual([3]);
+      store.showCompleted.set(true);
+      expect(store.visible().map((t) => t.id)).toEqual([1, 2, 3]);
+    });
+
+    it('CP-05-35: filters apply and the count only covers visible struck tasks', async () => {
+      const { store } = setup([
+        doneAt(1, now(), { projectId: 1, tags: ['a'] }),
+        doneAt(2, now(), { projectId: 2 }),
+        doneAt(3, now(), { projectId: 1 }),
+      ]);
+      await store.load();
+      store.projectFilter.set(1);
+      store.tagFilter.set('a');
+      expect(store.doneShown().map((t) => t.id)).toEqual([1]);
+    });
+
+    it('CP-05-37: removing from the list reuses the Hoy channel and column, nothing new', async () => {
+      const { store, api } = setup([doneAt(1, now())]);
+      await store.load();
+      await store.hideFromToday(store.doneShown());
+      expect(api.hideFromToday).toHaveBeenCalledWith([1]);
+    });
+
+    it('CP-05-40: a completion removed from the list is gone from Hoy and from Tareas alike', async () => {
+      const at = now();
+      const { store } = setup([
+        doneAt(1, at),
+        doneAt(2, at, { forToday: true, hiddenFromTodayAt: at }),
+      ]);
+      await store.load();
+      const inHoy = todayGroups(store.tasks()).today.map((t) => t.id);
+      expect(store.doneShown().map((t) => t.id)).toEqual([1]);
+      expect(inHoy).toEqual([]);
+      const hidden = doneAt(1, at, { forToday: true, hiddenFromTodayAt: at });
+      expect(todayGroups([hidden]).today).toHaveLength(0);
+    });
+
+    it('CP-05-36: reopening a hidden task and completing it again today shows it struck', async () => {
+      const at = new Date(Date.now() - 60_000).toISOString();
+      const { store } = setup([doneAt(1, at, { hiddenFromTodayAt: at })]);
+      await store.load();
+      expect(store.visible()).toHaveLength(0);
+
+      api_reload(store, [doneAt(1, now(), { hiddenFromTodayAt: at })]);
+      await store.load();
+      expect(store.doneShown().map((t) => t.id)).toEqual([1]);
+    });
   });
 
   it('CP-02-03: editing sends the new title and due date', async () => {
