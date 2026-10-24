@@ -43,7 +43,7 @@ describe('wiki notes in the global search', () => {
       kind: 'note',
       id: expect.any(Number),
       title: 'Guía de despliegue',
-      slug: 'Guía de despliegue',
+      slug: 'Operaciones/Guía de despliegue',
       section: 'Operaciones',
     });
     expect(byContent[0].snippet).toContain('pipeline');

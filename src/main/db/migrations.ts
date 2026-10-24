@@ -360,6 +360,18 @@ export const migrations: Migration[] = [
       ALTER TABLE tasks ADD COLUMN hidden_from_today_at TEXT;
     `,
   },
+  {
+    version: 19,
+    name: 'wiki_nested_folders',
+    // Nested folders (#89): `slug` is now the path of the file inside wiki/ and `section` the path of
+    // its folder, so two folders may hold notes with the same title. A title is unique per folder only.
+    // Existing rows (root or one folder deep) already are valid paths and need no rewriting.
+    up: `
+      DROP INDEX idx_notes_title_key;
+      CREATE INDEX idx_notes_title_key ON notes (title_key);
+      CREATE UNIQUE INDEX idx_notes_folder_title ON notes (COALESCE(section, ''), title_key);
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {

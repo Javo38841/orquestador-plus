@@ -43,17 +43,30 @@ function assetsIn(dir: string): string[] {
     );
 }
 
+/** Folders below this are not walked: a safety net, far beyond the depth the wiki indexes. */
+const EXPORT_MAX_DEPTH = 32;
+
+/** Folders of `dir` that can hold notes (not the `*.assets` ones), including those inside them, as relative paths. */
+function foldersIn(dir: string, prefix: string, depth: number): string[] {
+  if (depth >= EXPORT_MAX_DEPTH) return [];
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .flatMap((e) => (e.isDirectory() && !e.name.endsWith(ASSETS_SUFFIX) ? [e.name] : []))
+    .sort()
+    .flatMap((name) => [
+      prefix + name,
+      ...foldersIn(path.join(dir, name), `${prefix}${name}/`, depth + 1),
+    ]);
+}
+
 /**
- * Notes in the root and in the folders directly under `wiki/` (sections), with their paths, followed by
- * the attachments in the `*.assets` folders next to them. Symbolic links are never followed.
+ * Notes in the root and in every folder below `wiki/` (sections, at any depth), with their paths,
+ * followed by the attachments in the `*.assets` folders next to them. Symbolic links are never followed.
  */
 function wikiEntries(wikiDir: string): ZipEntry[] {
   let folders: string[];
   try {
-    folders = fs
-      .readdirSync(wikiDir, { withFileTypes: true })
-      .flatMap((e) => (e.isDirectory() && !e.name.endsWith(ASSETS_SUFFIX) ? [e.name] : []))
-      .sort();
+    folders = foldersIn(wikiDir, '', 0);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;

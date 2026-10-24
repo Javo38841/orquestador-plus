@@ -193,7 +193,7 @@ describe('RNF-12: the data folder is portable between Windows and Fedora', () =>
     const wiki = wikiAt(odd, db);
     expect(createNote(wiki, { title: 'Nota uno', content: 'x' }).ok).toBe(true);
     expect(fs.existsSync(path.join(odd, 'wiki', 'Nota uno.md'))).toBe(true);
-    for (const slug of ['../datos', '..\\datos', 'a/b', 'C:\\x']) {
+    for (const slug of ['../datos', '..\\datos', 'a/../b', 'C:\\x']) {
       expect(getNote(wiki, slug)).toEqual({ ok: false, error: 'invalid' });
     }
     db.close();

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { isValidSection, type SkippedFile } from '../../shared/wiki';
+import { isValidSection, MAX_SECTION_DEPTH, type SkippedFile } from '../../shared/wiki';
 import { rebuildIndexReport, type Wiki } from './wiki';
 
 export interface WikiSyncOptions {
@@ -34,7 +34,7 @@ const DEFAULT_MAX_WAIT_MS = 2000;
 /** Cheap fingerprint of `wiki/`: its folders and every `.md` with size and mtime. */
 export function snapshotWiki(dir: string): string {
   const parts: string[] = [];
-  const visit = (folder: string, prefix: string): void => {
+  const visit = (folder: string, prefix: string, depth: number): void => {
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(folder, { withFileTypes: true });
@@ -43,9 +43,9 @@ export function snapshotWiki(dir: string): string {
     }
     for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
       const rel = prefix + entry.name;
-      if (entry.isDirectory() && prefix === '' && isValidSection(entry.name)) {
+      if (entry.isDirectory() && depth < MAX_SECTION_DEPTH && isValidSection(entry.name)) {
         parts.push(`d:${rel}`);
-        visit(path.join(folder, entry.name), `${rel}/`);
+        visit(path.join(folder, entry.name), `${rel}/`, depth + 1);
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
         try {
           const stat = fs.statSync(path.join(folder, entry.name));
@@ -56,7 +56,7 @@ export function snapshotWiki(dir: string): string {
       }
     }
   };
-  visit(dir, '');
+  visit(dir, '', 0);
   return parts.join('\n');
 }
 
@@ -85,13 +85,20 @@ export function createWikiSync(wiki: Wiki, options: WikiSyncOptions): WikiSync {
   function syncWatchers(): void {
     if (!running) return;
     const wanted = new Set([wiki.dir]);
-    try {
-      for (const e of fs.readdirSync(wiki.dir, { withFileTypes: true })) {
-        if (e.isDirectory() && isValidSection(e.name)) wanted.add(path.join(wiki.dir, e.name));
+    const collect = (folder: string, depth: number): void => {
+      if (depth >= MAX_SECTION_DEPTH) return;
+      try {
+        for (const e of fs.readdirSync(folder, { withFileTypes: true })) {
+          if (!e.isDirectory() || !isValidSection(e.name)) continue;
+          const child = path.join(folder, e.name);
+          wanted.add(child);
+          collect(child, depth + 1);
+        }
+      } catch {
+        // the folder is gone; it is recreated or dropped by the next rebuild
       }
-    } catch {
-      // wiki/ itself is gone; it is recreated by the next rebuild
-    }
+    };
+    collect(wiki.dir, 0);
     for (const [dir, watcher] of watchers) {
       if (wanted.has(dir)) continue;
       watcher.close();

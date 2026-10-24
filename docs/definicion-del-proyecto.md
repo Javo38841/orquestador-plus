@@ -271,7 +271,7 @@ Un formulario temporal para que otras personas reporten problemas. Solo puede cr
 | RF-05 | Must | Tablero (General y Sueltas), Tareas | ✅ Diseñado |
 | RF-06 | Must | Tareas (Series recurrentes) · falta el editor de repetición | 🟡 Parcial |
 | RF-07 | Must | Todas (chips #etiqueta), filtros en Tablero y Snippets | ✅ Diseñado |
-| RF-08 | Must | Wiki (lectura, backlinks) · falta el modo edición | 🟡 Parcial |
+| RF-08 | Must | Wiki (lectura, backlinks, secciones anidadas hasta 5 niveles) · falta el modo edición | 🟡 Parcial |
 | RF-09 | Should | Bugs e incidencias | ✅ Diseñado |
 | RF-10 | Must | Solo el acceso “Buscar en todo · Ctrl K” · falta la paleta de resultados | ❌ Falta |
 | RF-11 | Must | Ninguna · falta Ajustes / Exportar | ❌ Falta |

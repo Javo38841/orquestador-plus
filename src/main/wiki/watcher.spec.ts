@@ -130,7 +130,7 @@ describe('wiki watcher', () => {
     s.markSynced();
     createNote(wiki, { title: 'Otra', content: '', section: 'Guías' });
     s.markSynced();
-    deleteNote(wiki, 'Otra');
+    deleteNote(wiki, 'Guías/Otra');
     s.markSynced();
     await new Promise((r) => setTimeout(r, DEBOUNCE * 5));
     expect(onChange).not.toHaveBeenCalled();
@@ -143,6 +143,19 @@ describe('wiki watcher', () => {
     s.markSynced();
     write('Nueva/Fuera.md', '---\ntitle: "Fuera"\n---\n\nx');
     await vi.waitFor(() => expect(titles()).toEqual(['Dentro', 'Fuera']));
+  });
+
+  it('CP-08-87: a note added outside in a nested folder is picked up, and a folder created inside is watched', async () => {
+    write('A/B/Uno.md', '---\ntitle: "Uno"\n---\n\nx');
+    start();
+    expect(listNotes(wiki).map((n) => n.slug)).toEqual(['A/B/Uno']);
+
+    write('A/B/Dos.md', '---\ntitle: "Dos"\n---\n\nx');
+    await vi.waitFor(() => expect(titles()).toEqual(['Dos', 'Uno']));
+    write('A/B/C/Tres.md', '---\ntitle: "Tres"\n---\n\nx');
+    await vi.waitFor(() => expect(titles()).toEqual(['Dos', 'Tres', 'Uno']));
+    write('A/B/C/Cuatro.md', '---\ntitle: "Cuatro"\n---\n\nx');
+    await vi.waitFor(() => expect(titles()).toContain('Cuatro'));
   });
 
   it('CP-08-110: reports the files left out of the index with the reason', () => {

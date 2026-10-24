@@ -2,7 +2,9 @@ import { computed, inject, Injectable, signal } from '@angular/core';
 import { ATTACHMENT_MAX_BYTES, type AttachmentResult } from '../../../../shared/attachments';
 import {
   buildWikiTree,
-  noteKey,
+  joinSection,
+  linkTargets,
+  sectionTrail,
   validateNoteInput,
   validateSectionInput,
   type Note,
@@ -12,8 +14,14 @@ import {
   type SectionError,
   type SectionSummary,
   type SkippedFile,
+  type WikiSection,
 } from '../../../../shared/wiki';
 import { DESKTOP_API } from '../../core/desktop-api';
+
+/** Paths of every folder of the tree, at any depth. */
+function sectionNames(sections: WikiSection[]): string[] {
+  return sections.flatMap((s) => [s.name, ...sectionNames(s.sections)]);
+}
 
 @Injectable({ providedIn: 'root' })
 export class WikiStore {
@@ -28,22 +36,16 @@ export class WikiStore {
   readonly sections = this.folders.asReadonly();
   /** Sidebar tree: loose pages and sections, each in its defined order. */
   readonly tree = computed(() => buildWikiTree(this.list(), this.folders()));
-  /** Title of the section the open note belongs to, if any. */
-  readonly currentSectionTitle = computed(() => {
-    const name = this.open()?.section;
-    if (name === undefined) return null;
-    return this.folders().find((s) => s.name === name)?.title ?? name;
-  });
+  /** Titles of the folders above the open note, outermost first; empty for a note in the root. */
+  readonly currentTrail = computed(() => sectionTrail(this.tree(), this.open()?.section));
   /** Files of `wiki/` that could not be loaded, with the reason. */
   readonly skipped = this.omitted.asReadonly();
   /** True when the open note's file was deleted or renamed outside the app. */
   readonly gone = this.missing.asReadonly();
   /** The note shown in the reading view. */
   readonly current = this.open.asReadonly();
-  /** File name of the note each normalized title points to; missing = pending link. */
-  readonly slugByKey = computed(
-    () => new Map(this.list().map((n) => [noteKey(n.title), n.slug] as const)),
-  );
+  /** Note each `[[link]]` key points to (a title, or a folder path to tell equal titles apart); missing = pending. */
+  readonly slugByKey = computed(() => linkTargets(this.list()));
 
   async load(): Promise<void> {
     if (!this.api) return;
@@ -140,14 +142,20 @@ export class WikiStore {
     return null;
   }
 
-  /** Creates an empty section; a name already used by another one is rejected. */
-  async createSection(title: string): Promise<SectionError | null> {
-    const checked = validateSectionInput({ title });
+  /**
+   * Creates an empty section, inside `parent` when given; a name already used in that folder is rejected.
+   * Resolves to the error, or null on success.
+   */
+  async createSection(title: string, parent?: string): Promise<SectionError | null> {
+    const checked = validateSectionInput({ title, ...(parent !== undefined && { parent }) });
     if (!checked.ok) return checked.error;
-    const key = checked.title.toLowerCase();
-    if (this.tree().sections.some((s) => s.name.toLowerCase() === key)) return 'duplicate';
+    const key = joinSection(checked.parent, checked.title).toLowerCase();
+    if (sectionNames(this.tree().sections).some((n) => n.toLowerCase() === key)) return 'duplicate';
     if (!this.api) return null;
-    const result = await this.api.createSection({ title: checked.title });
+    const result = await this.api.createSection({
+      title: checked.title,
+      ...(checked.parent !== undefined && { parent: checked.parent }),
+    });
     if (!result.ok) return result.error;
     await this.load();
     return null;

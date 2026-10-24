@@ -12,6 +12,7 @@ import {
   type AttachmentImageResult,
   type AttachmentResult,
 } from '../../shared/attachments';
+import { slugBaseName } from '../../shared/wiki';
 import { assetsDirOf, isInsideWiki, locateNote, type Wiki } from './wiki';
 
 const fail = (error: AttachmentError): { ok: false; error: AttachmentError } => ({
@@ -64,7 +65,7 @@ export function attachFile(wiki: Wiki, input: unknown): AttachmentResult {
       const stored = uniqueAttachmentName(wanted, new Set(fs.readdirSync(made.dir)));
       try {
         fs.writeFileSync(path.join(made.dir, stored), data, { flag: 'wx' });
-        return { ok: true, link: attachmentLink(slug, stored), name: stored };
+        return { ok: true, link: attachmentLink(slugBaseName(slug), stored), name: stored };
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       }

@@ -29,7 +29,9 @@ OrquestadorPlus/
     ├── nota.assets/        images and files attached to nota.md
     └── Sección/
         ├── otra.md
-        └── otra.assets/
+        ├── otra.assets/
+        └── Subsección/     folders nest up to 5 levels (ADR-005)
+            └── nota.md
 ```
 
 Attachments live next to their note, in a folder named `<note>.assets/`, and are linked from
