@@ -274,6 +274,11 @@ function indexLinks(db: Database.Database, noteId: number, content: string): voi
   for (const link of extractLinks(content)) insert.run(noteId, link.key, link.label);
 }
 
+/** Keeps the text of a note searchable (RF-10); the title is kept in step by triggers. */
+function indexBody(db: Database.Database, noteId: number, content: string): void {
+  db.prepare('UPDATE note_search SET body = ? WHERE rowid = ?').run(content, noteId);
+}
+
 function findBySlug(db: Database.Database, slug: string): NoteRow | undefined {
   return db.prepare('SELECT * FROM notes WHERE slug = ?').get(slug) as NoteRow | undefined;
 }
@@ -387,6 +392,7 @@ export function createNote(wiki: Wiki, input: unknown, now: Date = new Date()): 
         )
         .run(slug, checked.title, key, stamp, stamp, section);
       indexLinks(wiki.db, Number(info.lastInsertRowid), toLf(checked.content));
+      indexBody(wiki.db, Number(info.lastInsertRowid), toLf(checked.content));
       const target = filePath(wiki, slug, section);
       fs.mkdirSync(dir, { recursive: true });
       if (section !== null && !isInsideWiki(wiki, dir)) throw new WikiError('invalid');
@@ -466,6 +472,7 @@ export function updateNote(
         .prepare('UPDATE notes SET slug = ?, title = ?, title_key = ?, updated_at = ? WHERE id = ?')
         .run(nextSlug, checked.title, key, stamp, current.id);
       indexLinks(wiki.db, current.id, checked.content);
+      indexBody(wiki.db, current.id, toLf(checked.content));
       const existing = readIfExists(filePath(wiki, current.slug, current.section));
       writeFileAtomic(
         target,
@@ -706,6 +713,7 @@ export function rebuildIndexReport(wiki: Wiki): RebuildReport {
         parsed.description ?? null,
       );
       indexLinks(wiki.db, Number(info.lastInsertRowid), parsed.content);
+      indexBody(wiki.db, Number(info.lastInsertRowid), parsed.content);
       count++;
     }
     return { count, skipped };

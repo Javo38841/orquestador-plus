@@ -203,4 +203,45 @@ describe('SearchPalette', () => {
     await vi.runAllTimersAsync();
     expect(search).not.toHaveBeenCalled();
   });
+
+  it('CP-10-21: notes appear in a translated "Notas" group with title, section and snippet', async () => {
+    search.mockResolvedValue([
+      {
+        kind: 'note',
+        id: 5,
+        title: 'Guía de red',
+        slug: 'Guía de red',
+        section: 'Operaciones',
+        snippet: 'abrir el <b>puerto</b> 443',
+      },
+    ] satisfies SearchResult[]);
+    const { el, type } = await render();
+
+    await type('puerto');
+
+    expect([...el.querySelectorAll('h3')].map((h) => h.textContent?.trim())).toEqual(['Notas']);
+    const row = el.querySelector('[data-testid="search-result"]')!;
+    expect(row.textContent).toContain('Guía de red');
+    expect(row.querySelector('[data-testid="search-result-section"]')?.textContent).toContain(
+      'Operaciones',
+    );
+    const snippet = row.querySelector('[data-testid="search-result-snippet"]')!;
+    expect(snippet.textContent).toBe('abrir el <b>puerto</b> 443'); // plain text, not HTML
+    expect(snippet.querySelector('b')).toBeNull();
+  });
+
+  it('CP-10-21: Enter on a note navigates to it in the wiki and closes the palette', async () => {
+    search.mockResolvedValue([
+      { kind: 'note', id: 5, title: 'Guía', slug: 'Guía', heading: 'puertos' },
+    ] satisfies SearchResult[]);
+    const { type, press, closed } = await render();
+
+    await type('puertos');
+    press('Enter');
+
+    expect(navigate).toHaveBeenCalledWith(['/wiki'], {
+      queryParams: { note: 'Guía', heading: 'puertos' },
+    });
+    expect(closed).toHaveBeenCalled();
+  });
 });

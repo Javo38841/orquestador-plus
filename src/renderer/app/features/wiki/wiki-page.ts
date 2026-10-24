@@ -8,6 +8,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import {
   extractToc,
@@ -556,8 +557,17 @@ export class WikiPage implements OnInit {
 
   private readonly destroyRef = inject(DestroyRef);
 
+  private readonly route = inject(ActivatedRoute, { optional: true });
+
   ngOnInit(): void {
-    void this.store.load();
+    const loaded = this.store.load();
+    // Arriving from the global search: `?note=<slug>` and, if a heading matched, `&heading=<id>`.
+    const sub = this.route?.queryParamMap.subscribe((params) => {
+      const slug = params.get('note');
+      const heading = params.get('heading');
+      if (slug) void loaded.then(() => this.guard(() => void this.openFromSearch(slug, heading)));
+    });
+    this.destroyRef.onDestroy(() => sub?.unsubscribe());
     // The wiki can be edited with other tools while it is open (RF-08).
     this.destroyRef.onDestroy(this.store.watchExternalChanges(() => this.editing()));
   }
@@ -623,6 +633,21 @@ export class WikiPage implements OnInit {
       if (scroller) scroller.scrollTop = 0;
     });
   };
+
+  /** Opens the note a search result points at, at its matching heading or from the top. */
+  private async openFromSearch(slug: string, heading: string | null): Promise<void> {
+    this.stopEditing();
+    this.reached.set(null);
+    await this.store.openNote(slug);
+    // Wait for the reading view to render the headings.
+    await new Promise((resolve) => setTimeout(resolve));
+    const scroller = this.scroller()?.nativeElement;
+    if (heading && this.headingElements().some((h) => h.dataset['headingId'] === heading)) {
+      this.goToHeading(heading);
+    } else if (scroller) {
+      scroller.scrollTop = 0;
+    }
+  }
 
   /** Scrolls to a heading of the page and marks it as the current one. */
   protected goToHeading(id: string): void {

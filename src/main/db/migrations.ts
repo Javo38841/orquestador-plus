@@ -327,6 +327,31 @@ export const migrations: Migration[] = [
       ) STRICT;
     `,
   },
+  {
+    version: 17,
+    name: 'note_search',
+    // Wiki notes in the global search (RF-10). `rowid` = notes.id. Titles are kept in step by
+    // triggers; the body lives only in the .md files, so the wiki code fills it on every write and
+    // `rebuildIndex` refills it at startup (existing notes are searchable by title until then).
+    up: `
+      CREATE VIRTUAL TABLE note_search USING fts5(
+        title,
+        body,
+        tokenize = 'unicode61 remove_diacritics 2'
+      );
+      INSERT INTO note_search (rowid, title, body) SELECT id, title, '' FROM notes;
+
+      CREATE TRIGGER note_search_insert AFTER INSERT ON notes BEGIN
+        INSERT INTO note_search (rowid, title, body) VALUES (new.id, new.title, '');
+      END;
+      CREATE TRIGGER note_search_update AFTER UPDATE OF title ON notes BEGIN
+        UPDATE note_search SET title = new.title WHERE rowid = old.id;
+      END;
+      CREATE TRIGGER note_search_delete AFTER DELETE ON notes BEGIN
+        DELETE FROM note_search WHERE rowid = old.id;
+      END;
+    `,
+  },
 ];
 
 export function currentVersion(db: Database.Database): number {

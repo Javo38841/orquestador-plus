@@ -18,13 +18,25 @@ export const SEARCH_DEBOUNCE_MS = 150;
 const GROUP_KEYS: Record<SearchKind, string> = {
   task: 'search.groups.task',
   inbox: 'search.groups.inbox',
+  note: 'search.groups.note',
 };
 
 /** Where each kind of result lives. */
-function destination(result: SearchResult): { path: string; query?: Record<string, number> } {
-  return result.kind === 'task'
-    ? { path: '/tasks', query: { task: result.id } }
-    : { path: '/inbox' };
+function destination(result: SearchResult): {
+  path: string;
+  query?: Record<string, string | number>;
+} {
+  switch (result.kind) {
+    case 'task':
+      return { path: '/tasks', query: { task: result.id } };
+    case 'note':
+      return {
+        path: '/wiki',
+        query: { note: result.slug ?? '', ...(result.heading && { heading: result.heading }) },
+      };
+    default:
+      return { path: '/inbox' };
+  }
 }
 
 /** Global search palette (RF-10), opened with Ctrl K: results grouped by kind, keyboard driven. */
@@ -83,6 +95,20 @@ function destination(result: SearchResult): { path: string; query?: Record<strin
                 (mouseenter)="activate(result)"
               >
                 {{ result.title }}
+                @if (result.kind === 'note') {
+                  @if (result.section) {
+                    <span class="ml-2 text-xs text-muted" data-testid="search-result-section">{{
+                      result.section
+                    }}</span>
+                  }
+                  @if (result.snippet) {
+                    <span
+                      class="block truncate text-xs text-muted"
+                      data-testid="search-result-snippet"
+                      >{{ result.snippet }}</span
+                    >
+                  }
+                }
               </li>
             }
           </ul>
