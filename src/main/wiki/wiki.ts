@@ -134,6 +134,83 @@ export function serializeNote(
   return `---\ntitle: ${JSON.stringify(title)}\n${extra}created: ${createdAt}\nupdated: ${updatedAt}\n---\n\n${toLf(content)}`;
 }
 
+const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+const KEY_LINE = /^([^\s#:'"-][^:]*?)[ \t]*:(?:[ \t]|$)/;
+
+/**
+ * True if the frontmatter lines can be edited line by line: every top-level line is a comment, a blank,
+ * a continuation or a `key: value` with a new key and no quote left open. Anything else (broken YAML,
+ * repeated keys, unclosed quotes) is left exactly as the user wrote it.
+ */
+function isEditableFrontmatter(lines: string[]): boolean {
+  const seen = new Set<string>();
+  for (const line of lines.map((l) => l.replace(/\r$/, ''))) {
+    if (line.trim() === '' || line.trimStart().startsWith('#') || /^[ \t-]/.test(line)) continue;
+    const m = KEY_LINE.exec(line);
+    if (!m || seen.has(m[1])) return false;
+    seen.add(m[1]);
+    const value = line.slice(m[0].length).trim();
+    if (/^"/.test(value) && !/^"(?:[^"\\]|\\.)*"(?:\s+#.*)?$/.test(value)) return false;
+    if (/^'/.test(value) && !/^'(?:[^']|'')*'(?:\s+#.*)?$/.test(value)) return false;
+  }
+  return true;
+}
+
+export interface FrontmatterEdit {
+  title?: string;
+  created?: string;
+  updated: string;
+  order?: number;
+  description?: string;
+}
+
+/**
+ * Saves a note over its existing file text keeping everything the app does not own: other keys,
+ * comments, blank lines, key order, BOM. Only the `title`, `updated`,
+ * `order` and `description` lines in `edit` are replaced (or added when missing). A frontmatter the app
+ * cannot read is kept as is. The body is written as given, with LF line endings.
+ */
+export function rewriteNote(
+  existing: string,
+  edit: FrontmatterEdit & { title: string; created: string },
+  content: string,
+): string {
+  const bom = existing.startsWith('\uFEFF') ? '\uFEFF' : '';
+  const text = toLf(existing.slice(bom.length)); // notes are always saved with LF (RNF-12)
+  content = toLf(content);
+  const match = FRONTMATTER.exec(text);
+  if (!match) {
+    return bom + serializeNote(edit.title, edit.created, edit.updated, '') + content;
+  }
+  const eol = '\n';
+  const lines = match[1].split('\n');
+  const rest = text.slice(match[0].length);
+  const closing = match[0].slice(match[0].lastIndexOf('---'));
+  const body = /^\r?\n/.test(rest) || /^\r?\n/.test(content) ? eol + content : content;
+  if (!isEditableFrontmatter(lines)) return bom + text.slice(0, match[0].length) + body;
+
+  const values: [string, string | undefined][] = [
+    ['title', edit.title === undefined ? undefined : JSON.stringify(edit.title)],
+    ['order', edit.order === undefined ? undefined : String(edit.order)],
+    ['description', edit.description === undefined ? undefined : JSON.stringify(edit.description)],
+    ['updated', edit.updated],
+  ];
+  for (const [key, value] of values) {
+    if (value === undefined) continue;
+    const line = `${key}: ${value}`;
+    const at = lines.findIndex((l) => KEY_LINE.exec(l)?.[1] === key);
+    if (at === -1) {
+      if (key === 'title') lines.unshift(line);
+      else lines.push(line);
+      continue;
+    }
+    let end = at + 1;
+    while (end < lines.length && /^[ \t]+\S/.test(lines[end])) end++;
+    lines.splice(at, end - at, line);
+  }
+  return `${bom}---${eol}${lines.join('\n')}${eol}${closing}${body}`;
+}
+
 export interface ParsedNote {
   title: string | null;
   createdAt: string | null;
@@ -315,6 +392,14 @@ export function createNote(wiki: Wiki, input: unknown, now: Date = new Date()): 
   return getNote(wiki, slug);
 }
 
+function readIfExists(file: string): string | null {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
 /** True when both paths are physically the same file (case-insensitive file systems). */
 function isSameFile(a: string, b: string): boolean {
   try {
@@ -361,12 +446,19 @@ export function updateNote(
         .prepare('UPDATE notes SET slug = ?, title = ?, title_key = ?, updated_at = ? WHERE id = ?')
         .run(nextSlug, checked.title, key, stamp, current.id);
       indexLinks(wiki.db, current.id, checked.content);
+      const existing = readIfExists(filePath(wiki, current.slug, current.section));
       writeFileAtomic(
         target,
-        serializeNote(checked.title, current.created_at, stamp, checked.content, {
-          order: current.sort_order,
-          description: current.description,
-        }),
+        existing === null
+          ? serializeNote(checked.title, current.created_at, stamp, checked.content, {
+              order: current.sort_order,
+              description: current.description,
+            })
+          : rewriteNote(
+              existing,
+              { title: checked.title, created: current.created_at, updated: stamp },
+              checked.content,
+            ),
       );
       written = true;
       if (nextSlug !== current.slug && !sameFile) {
