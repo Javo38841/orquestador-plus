@@ -90,6 +90,7 @@ test('ADR-003: the renderer has no access to Node', async () => {
       'listTags',
       'listTasks',
       'listTopics',
+      'moveNote',
       'onWikiChanged',
       'openAttachment',
       'openWikiFolder',
